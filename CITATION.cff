@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use AorticTurb in published work, please cite this software and the Hasler-Obrist source dataset."
+title: "AorticTurb"
+type: software
+authors:
+  - family-names: Saqr
+    given-names: Khalid M.
+repository-code: "https://github.com/khalid-saqr/AorticTurb"
+version: 0.2.0
+license: BSD-3-Clause
+keywords:
+  - turbulence
+  - tomographic PIV
+  - aortic valve
+  - Kolmogorov-Obukhov
+  - Reynolds-stress anisotropy
+preferred-citation:
+  type: software
+  title: "AorticTurb: reproducible turbulence classification from tomographic PIV"
+  authors:
+    - family-names: Saqr
+      given-names: Khalid M.
+  version: 0.2.0
+  repository-code: "https://github.com/khalid-saqr/AorticTurb"

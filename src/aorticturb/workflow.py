@@ -1,69 +1,46 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
-import numpy as np
-
-from .constants import PHASES, REALIZATIONS
-from .data.layout import phase_dir
-from .data.loader import load_velocity_field, split_field
-from .validation.masks import common_support, support_fraction
-from .validation.startup_gate import run_startup_gate
-from .decomposition.core import phase_decomposition, reynolds_stress
-from .regime.gate_a import evaluate_gate_a
-
-
-def load_phase(root: str | Path, phase: str) -> tuple[np.ndarray, np.ndarray]:
-    coordinates = None
-    velocities = []
-    for name in REALIZATIONS:
-        field = load_velocity_field(phase_dir(root, phase) / name, mmap=True)
-        xyz, uvw = split_field(field)
-        if coordinates is None:
-            coordinates = np.asarray(xyz)
-        elif not np.array_equal(np.asarray(xyz), coordinates, equal_nan=True):
-            raise ValueError(f"{phase}: coordinate grid differs across realizations.")
-        velocities.append(np.asarray(uvw))
-    return coordinates, np.stack(velocities)
+from .config import load_config
+from .reporting.run_manifest import new_run_id, write_json
+from .decomposition.driver import run_decomposition
+from .regime.driver import run_regime
+from .kolmogorov.driver import run_kolmogorov
+from .taylor.driver import run_taylor
+from .anisotropy.driver import run_anisotropy
+from .diagnostics.driver import run_diagnostics
+from .classification.driver import run_classification
 
 
-def run_decomposition(root: str | Path, output: str | Path) -> dict:
-    gate = run_startup_gate(root)
-    if not gate.passed:
-        raise RuntimeError("Startup gate failed: " + json.dumps(gate.to_dict()))
+def run_all(dataset_root: str | Path, output_root: str | Path, *, config_path: str | Path | None = None) -> dict:
+    dataset_root = Path(dataset_root)
+    output_root = Path(output_root)
+    config = load_config(config_path)
+    study_id = new_run_id()
 
-    output = Path(output)
-    output.mkdir(parents=True, exist_ok=True)
-    summary = {"startup_gate": gate.to_dict(), "phases": {}}
+    decomposition = run_decomposition(dataset_root, output_root, config, run_id=f"{study_id}_decomposition")
+    regime = run_regime(dataset_root, decomposition["run_dir"], output_root, config, run_id=f"{study_id}_gate_a")
+    ko = run_kolmogorov(dataset_root, decomposition["run_dir"], regime["run_dir"], output_root, config, run_id=f"{study_id}_ko")
+    taylor = run_taylor(dataset_root, decomposition["run_dir"], regime["run_dir"], output_root, config, run_id=f"{study_id}_taylor")
+    anisotropy = run_anisotropy(dataset_root, decomposition["run_dir"], regime["run_dir"], output_root, config, run_id=f"{study_id}_anisotropy")
+    diagnostics = run_diagnostics(dataset_root, decomposition["run_dir"], regime["run_dir"], output_root, config, run_id=f"{study_id}_diagnostics")
+    classification = run_classification(dataset_root, regime["run_dir"], ko["run_dir"], output_root, config, taylor_dir=taylor["run_dir"], anisotropy_dir=anisotropy["run_dir"], diagnostics_dir=diagnostics["run_dir"], run_id=f"{study_id}_classification")
 
-    for phase in PHASES:
-        xyz, fields = load_phase(root, phase)
-        support = common_support(fields, policy="intersection")
-        mean, residuals = phase_decomposition(fields, support=support)
-        R, k = reynolds_stress(residuals)
-
-        np.savez_compressed(
-            output / f"{phase}_decomposition.npz",
-            coordinates=xyz,
-            support=support,
-            mean=mean,
-            residuals=residuals,
-            reynolds_stress=R,
-            k=k,
-        )
-
-        evidence = evaluate_gate_a(
-            mean,
-            residuals,
-            support_fraction_value=support_fraction(fields, "intersection"),
-        )
-        summary["phases"][phase] = {
-            "support_fraction": float(support.mean()),
-            "gate_a_readiness": evidence.to_dict(),
-        }
-
-    (output / "decomposition_summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    summary = {
+        "study_id": study_id,
+        "dataset_root": str(dataset_root),
+        "stages": {
+            "decomposition": decomposition["run_dir"],
+            "regime": regime["run_dir"],
+            "kolmogorov_obukhov": ko["run_dir"],
+            "taylor": taylor["run_dir"],
+            "anisotropy": anisotropy["run_dir"],
+            "diagnostics": diagnostics["run_dir"],
+            "classification": classification["run_dir"],
+        },
+        "phase_classifications": classification["phase_classifications"],
+    }
+    study_dir = output_root / "study_runs" / study_id
+    study_dir.mkdir(parents=True, exist_ok=False)
+    write_json(study_dir / "study_summary.json", summary)
     return summary

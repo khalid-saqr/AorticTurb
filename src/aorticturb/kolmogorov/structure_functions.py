@@ -8,11 +8,9 @@ def longitudinal_increments(
     velocity: np.ndarray,
     pairs: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute separation magnitude and longitudinal velocity increment for node pairs."""
     positions = np.asarray(positions, dtype=float)
     velocity = np.asarray(velocity, dtype=float)
     pairs = np.asarray(pairs, dtype=int)
-
     a = pairs[:, 0]
     b = pairs[:, 1]
     dr = positions[b] - positions[a]
@@ -39,7 +37,6 @@ def structure_function(
     centers = 0.5 * (edges[:-1] + edges[1:])
     values = np.full(centers.shape, np.nan)
     counts = np.zeros(centers.shape, dtype=int)
-
     q = np.abs(d) ** order if absolute else d**order
     for idx in range(len(centers)):
         mask = (r >= edges[idx]) & (r < edges[idx + 1]) & np.isfinite(q)
@@ -47,6 +44,60 @@ def structure_function(
         if counts[idx]:
             values[idx] = float(np.mean(q[mask]))
     return centers, values, counts
+
+
+def directional_structure_functions(
+    velocity_grid: np.ndarray,
+    spacing: tuple[float, float, float],
+    *,
+    max_lag: int,
+    orders: tuple[int, ...] = (2, 3, 4, 6),
+) -> dict[int, dict[str, np.ndarray]]:
+    """Directional longitudinal structure functions without assuming isotropy."""
+    u = np.asarray(velocity_grid, dtype=float)
+    if u.ndim != 4 or u.shape[-1] != 3:
+        raise ValueError("Expected velocity_grid shape (nx, ny, nz, 3).")
+    if not np.isfinite(u).all():
+        raise ValueError("Structure-function window contains non-finite values.")
+
+    result: dict[int, dict[str, np.ndarray]] = {}
+    for axis in range(3):
+        available = min(max_lag, u.shape[axis] - 1)
+        rvals = []
+        counts = []
+        moments = {p: [] for p in orders}
+        for lag in range(1, available + 1):
+            a = [slice(None)] * 3
+            b = [slice(None)] * 3
+            a[axis] = slice(0, -lag)
+            b[axis] = slice(lag, None)
+            du_l = u[tuple(b) + (axis,)] - u[tuple(a) + (axis,)]
+            flat = du_l.ravel()
+            finite = flat[np.isfinite(flat)]
+            rvals.append(lag * spacing[axis])
+            counts.append(finite.size)
+            for p in orders:
+                if finite.size:
+                    value = np.mean(np.abs(finite) ** p) if p != 3 else np.mean(finite**3)
+                else:
+                    value = np.nan
+                moments[p].append(float(value))
+        result[axis] = {
+            "r": np.asarray(rvals, dtype=float),
+            "count": np.asarray(counts, dtype=int),
+            **{f"S{p}": np.asarray(values, dtype=float) for p, values in moments.items()},
+        }
+    return result
+
+
+def ess_exponent(s3: np.ndarray, sp: np.ndarray) -> float | None:
+    s3 = np.asarray(s3, dtype=float)
+    sp = np.asarray(sp, dtype=float)
+    valid = np.isfinite(s3) & np.isfinite(sp) & (np.abs(s3) > 0) & (sp > 0)
+    if valid.sum() < 4:
+        return None
+    slope, _ = np.polyfit(np.log(np.abs(s3[valid])), np.log(sp[valid]), 1)
+    return float(slope)
 
 
 def local_log_slope(x: np.ndarray, y: np.ndarray) -> np.ndarray:
