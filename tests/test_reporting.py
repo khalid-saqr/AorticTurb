@@ -19,7 +19,7 @@ def test_results_run_uses_canonical_workspace_tree(tmp_path: Path):
     assert run_dir == tmp_path / "05_results" / "run_test"
 
 
-def test_finalized_run_manifest_hashes_final_outputs(tmp_path: Path):
+def test_finalized_run_manifest_hashes_final_outputs_and_environment(tmp_path: Path):
     dataset = tmp_path / "dataset"
     dataset.mkdir()
     (dataset / "SHA256SUMS.txt").write_text("# test ledger\n", encoding="utf-8")
@@ -29,6 +29,8 @@ def test_finalized_run_manifest_hashes_final_outputs(tmp_path: Path):
     finalize_run(run_dir)
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "COMPLETE"
+    assert "aorticturb" in manifest["software_versions"]
+    assert "numpy" in manifest["software_versions"]
     records = {item["path"]: item for item in manifest["outputs"]}
     for relpath, record in records.items():
         assert record["sha256"] == _sha(run_dir / relpath)

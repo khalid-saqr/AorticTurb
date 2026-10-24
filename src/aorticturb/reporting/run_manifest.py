@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 import csv
 import hashlib
 import json
 import platform
+import subprocess
 import sys
 from typing import Iterable
 
@@ -30,6 +32,42 @@ def new_run_id() -> str:
     return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
 
 
+def _package_versions() -> dict[str, str | None]:
+    distributions = {
+        "aorticturb": "aorticturb",
+        "numpy": "numpy",
+        "scipy": "scipy",
+        "pandas": "pandas",
+        "matplotlib": "matplotlib",
+        "PyYAML": "PyYAML",
+        "requests": "requests",
+        "typer": "typer",
+        "rich": "rich",
+    }
+    versions: dict[str, str | None] = {}
+    for label, dist in distributions.items():
+        try:
+            versions[label] = importlib_metadata.version(dist)
+        except importlib_metadata.PackageNotFoundError:
+            versions[label] = None
+    return versions
+
+
+def _git_commit() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        value = result.stdout.strip()
+        return value if result.returncode == 0 and len(value) >= 7 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def create_run_directory(workspace_root: str | Path, branch: str, *, run_id: str | None = None) -> Path:
     """Create a run under the canonical AGENTS.md workspace tree."""
     run_id = run_id or new_run_id()
@@ -43,8 +81,6 @@ def create_run_directory(workspace_root: str | Path, branch: str, *, run_id: str
     path = base / run_id
     path.mkdir(parents=True, exist_ok=False)
     (path / "figures").mkdir()
-    # Temporary per-run staging. Decomposition moves reusable arrays to 03_processed_data
-    # before its final manifest is frozen; other stages leave this directory empty.
     (path / "processed").mkdir()
     (path / "logs").mkdir()
     return path
@@ -110,6 +146,8 @@ def initialize_run(
         "branch": branch,
         "python": sys.version,
         "platform": platform.platform(),
+        "software_versions": _package_versions(),
+        "git_commit": _git_commit(),
         "dataset_root": str(dataset_root),
         "config": config,
         "warnings": warnings or [],
