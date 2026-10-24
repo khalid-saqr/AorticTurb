@@ -27,8 +27,9 @@ def test_central_gradient_steps_agree_for_linear_field_on_common_interior():
     g1 = velocity_gradient_central(u, (1.0, 1.0, 1.0), step=1, trim=2)
     g2 = velocity_gradient_central(u, (1.0, 1.0, 1.0), step=2, trim=2)
     expected = np.array([[2.0, 1.0, 0.0], [0.0, -3.0, 1.0], [-1.0, 0.0, 4.0]])
-    np.testing.assert_allclose(g1, expected, atol=1e-12)
-    np.testing.assert_allclose(g2, expected, atol=1e-12)
+    expected_field = np.broadcast_to(expected, g1.shape)
+    np.testing.assert_allclose(g1, expected_field, atol=1e-12)
+    np.testing.assert_allclose(g2, expected_field, atol=1e-12)
 
 
 def test_derivative_interior_mask_trims_every_face():
