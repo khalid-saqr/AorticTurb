@@ -15,6 +15,14 @@ regime:
   correlation_max_lag: 8
   transfer_sigmas: [1.0, 2.0, 3.0]
   measurement_noise_rms_max: null
+  support_sensitivity:
+    policies:
+      - legacy_global_fraction
+      - strict_mask_consistency
+      - fully_finite_local_windows
+      - strict_mask_and_local_windows
+    min_fully_finite_windows: 1
+    required_local_window_valid_fraction: 1.0
 kolmogorov:
   window_shape: [32, 32, 32]
   fallback_window_sizes: [24, 16, 12, 8]
