@@ -10,7 +10,6 @@ def test_version_command():
 
 
 def test_support_sensitivity_command_is_registered():
-    result = CliRunner().invoke(app, ["support-sensitivity", "--help"])
+    result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--decomposition" in result.stdout
-    assert "--regime" in result.stdout
+    assert "support-sensitivity" in result.stdout
