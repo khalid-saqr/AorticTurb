@@ -20,6 +20,66 @@ def velocity_gradient(
     return grad
 
 
+def velocity_gradient_central(
+    velocity_grid: np.ndarray,
+    spacing: tuple[float, float, float],
+    *,
+    step: int = 1,
+    trim: int | None = None,
+) -> np.ndarray:
+    """Central-difference velocity gradient on a boundary-trimmed common interior.
+
+    ``step`` is the differencing half-width in grid intervals. ``trim`` controls the
+    returned common interior and must be at least ``step``. Using the same ``trim``
+    with step=1 and step=2 permits a point-for-point derivative-scale sensitivity
+    comparison without interpolation or filling invalid support.
+    """
+    u = np.asarray(velocity_grid, dtype=float)
+    if u.ndim != 4 or u.shape[-1] != 3:
+        raise ValueError("Expected velocity_grid shape (nx, ny, nz, 3).")
+    if not np.isfinite(u).all():
+        raise ValueError("Gradient window contains non-finite values.")
+    step = int(step)
+    if step < 1:
+        raise ValueError("step must be at least 1 grid interval.")
+    trim = step if trim is None else int(trim)
+    if trim < step:
+        raise ValueError("trim must be greater than or equal to step.")
+    shape = u.shape[:3]
+    if any(n <= 2 * trim for n in shape):
+        raise ValueError("Gradient window is too small for the requested trim.")
+    spacing = tuple(float(x) for x in spacing)
+    if len(spacing) != 3 or any((not np.isfinite(x)) or x <= 0 for x in spacing):
+        raise ValueError("spacing must contain three positive finite values.")
+
+    center = [slice(trim, n - trim) for n in shape]
+    out_shape = tuple(n - 2 * trim for n in shape)
+    grad = np.empty(out_shape + (3, 3), dtype=float)
+    for i in range(3):
+        for j in range(3):
+            plus = list(center)
+            minus = list(center)
+            plus[j] = slice(trim + step, shape[j] - trim + step)
+            minus[j] = slice(trim - step, shape[j] - trim - step)
+            grad[..., i, j] = (
+                u[tuple(plus) + (i,)] - u[tuple(minus) + (i,)]
+            ) / (2.0 * step * spacing[j])
+    return grad
+
+
+def derivative_interior_mask(shape: tuple[int, int, int], *, trim: int) -> np.ndarray:
+    shape = tuple(int(x) for x in shape)
+    trim = int(trim)
+    if len(shape) != 3 or trim < 0 or any(n <= 2 * trim for n in shape):
+        raise ValueError("Invalid shape/trim for derivative interior mask.")
+    mask = np.zeros(shape, dtype=bool)
+    if trim == 0:
+        mask[...] = True
+    else:
+        mask[trim:-trim, trim:-trim, trim:-trim] = True
+    return mask
+
+
 def strain_rate(grad: np.ndarray) -> np.ndarray:
     return 0.5 * (grad + np.swapaxes(grad, -1, -2))
 
