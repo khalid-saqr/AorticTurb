@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 import numpy as np
 
 from ..constants import PHASES
 from ..decomposition.driver import load_decomposition
 from ..grid import infer_structured_grid, adaptive_windows
+from ..regime.ko_handoff import resolve_ko_handoff
 from ..uncertainty.bootstrap import bootstrap_mean_ci
 from ..reporting.run_manifest import create_run_directory, initialize_run, finalize_run, write_json, write_csv, append_log
 from .spectra import directional_spectrum, isotropic_spectrum, fit_scaling_range, ScalingFit
@@ -16,15 +16,19 @@ from .flux import coarse_grained_flux
 
 METHODS = """# Kolmogorov–Obukhov tests
 
-This stage runs only for phases that passed Gate A. All spectra, structure functions, and
-coarse-grained fluxes are computed directly in space on local fully finite rectangular
-windows. No whole-domain FFT and no Taylor frequency-to-wavenumber conversion is used.
-Directional spectra and longitudinal structure functions are retained so isotropy is not
-assumed. Candidate scaling intervals are selected by power-law linearity and interval
-length without reference to a target exponent, then fixed for realization-level
-uncertainty. K41 targets are tested against realization-bootstrap confidence intervals.
-The 4/5-law amplitude test uses the independently estimated positive coarse-grained flux
-as epsilon. KO support requires concordance; a single `-5/3` slope can never decide it.
+This stage runs only for phases with an explicit Gate-A handoff authorization. The primary
+Gate-A result is never rewritten. When a saved support-sensitivity run is explicitly supplied,
+KO may proceed only where all locked non-primary support comparators concordantly project
+STOCHASTIC_MULTISCALE_SUPPORTED; that handoff and its source files are recorded in the run.
+All spectra, structure functions, and coarse-grained fluxes are computed directly in space
+on local fully finite rectangular windows. No whole-domain FFT and no Taylor
+frequency-to-wavenumber conversion is used. Directional spectra and longitudinal structure
+functions are retained so isotropy is not assumed. Candidate scaling intervals are selected
+by power-law linearity and interval length without reference to a target exponent, then fixed
+for realization-level uncertainty. K41 targets are tested against realization-bootstrap
+confidence intervals. The 4/5-law amplitude test uses the independently estimated positive
+coarse-grained flux as epsilon. KO support requires concordance; a single `-5/3` slope can
+never decide it.
 """
 
 AXIS_NAMES = {0: "x", 1: "y", 2: "z"}
@@ -101,10 +105,6 @@ def _flux_status(
     return status, slope_ci, sign_ci
 
 
-def _load_regime(path: Path) -> dict:
-    return json.loads((path / "regime_summary.json").read_text(encoding="utf-8"))
-
-
 def run_kolmogorov(
     dataset_root: str | Path,
     decomposition_dir: str | Path,
@@ -112,14 +112,31 @@ def run_kolmogorov(
     output_root: str | Path,
     config: dict,
     *,
+    support_sensitivity_dir: str | Path | None = None,
     run_id: str | None = None,
 ) -> dict:
     dataset_root = Path(dataset_root)
     decomposition_dir = Path(decomposition_dir)
     regime_dir = Path(regime_dir)
-    regime = _load_regime(regime_dir)
+    sensitivity_dir = (
+        Path(support_sensitivity_dir) if support_sensitivity_dir is not None else None
+    )
+    handoff = resolve_ko_handoff(regime_dir, sensitivity_dir)
     run_dir = create_run_directory(output_root, "02_kolmogorov_obukhov", run_id=run_id)
-    initialize_run(run_dir, branch="02_kolmogorov_obukhov", dataset_root=dataset_root, config=config, methods=METHODS, extra_inputs=[decomposition_dir / "decomposition_summary.json", regime_dir / "regime_summary.json"])
+    extra_inputs = [
+        decomposition_dir / "decomposition_summary.json",
+        regime_dir / "regime_summary.json",
+    ]
+    if sensitivity_dir is not None:
+        extra_inputs.append(sensitivity_dir / "support_sensitivity.json")
+    initialize_run(
+        run_dir,
+        branch="02_kolmogorov_obukhov",
+        dataset_root=dataset_root,
+        config=config,
+        methods=METHODS,
+        extra_inputs=extra_inputs,
+    )
 
     analysis = config.get("analysis", {})
     kcfg = config.get("kolmogorov", {})
@@ -139,9 +156,25 @@ def run_kolmogorov(
     phase_summary: dict = {}
 
     for pidx, phase in enumerate(PHASES):
-        if regime["phases"][phase]["turbulence_established"] is not True:
-            phase_summary[phase] = {"status": "SKIPPED_GATE_A", "ko_resolved": None, "ko_supported": None}
-            metrics.append({"phase": phase, "status": "SKIPPED_GATE_A", "ko_resolved": None, "ko_supported": None})
+        phase_handoff = handoff[phase]
+        handoff_payload = phase_handoff.to_dict()
+        if not phase_handoff.ko_authorized:
+            phase_summary[phase] = {
+                "status": "SKIPPED_GATE_A",
+                "ko_resolved": None,
+                "ko_supported": None,
+                "gate_a_handoff": handoff_payload,
+            }
+            diagnostics["phases"][phase] = {"gate_a_handoff": handoff_payload}
+            metrics.append({
+                "phase": phase,
+                "status": "SKIPPED_GATE_A",
+                "ko_resolved": None,
+                "ko_supported": None,
+                "gate_a_handoff_authorized": False,
+                "gate_a_handoff_source": phase_handoff.source,
+            })
+            append_log(run_dir, f"{phase} SKIPPED_GATE_A: {phase_handoff.reason}")
             continue
 
         data = load_decomposition(decomposition_dir, phase)
@@ -149,8 +182,21 @@ def run_kolmogorov(
         support_grid = grid.reshape_nodes(data["support"].astype(bool))
         windows = adaptive_windows(support_grid, preferred=preferred, fallback_sizes=fallback, overlap=overlap, min_valid_fraction=1.0, require_full=True, max_windows=max_windows)
         if not windows:
-            phase_summary[phase] = {"status": "UNRESOLVED_NO_LOCAL_WINDOW", "ko_resolved": False, "ko_supported": None}
-            metrics.append({"phase": phase, "status": "UNRESOLVED_NO_LOCAL_WINDOW", "ko_resolved": False, "ko_supported": None})
+            phase_summary[phase] = {
+                "status": "UNRESOLVED_NO_LOCAL_WINDOW",
+                "ko_resolved": False,
+                "ko_supported": None,
+                "gate_a_handoff": handoff_payload,
+            }
+            diagnostics["phases"][phase] = {"gate_a_handoff": handoff_payload}
+            metrics.append({
+                "phase": phase,
+                "status": "UNRESOLVED_NO_LOCAL_WINDOW",
+                "ko_resolved": False,
+                "ko_supported": None,
+                "gate_a_handoff_authorized": True,
+                "gate_a_handoff_source": phase_handoff.source,
+            })
             continue
 
         residuals = data["residuals"]
@@ -203,6 +249,7 @@ def run_kolmogorov(
         spectrum_cis: list[tuple[float, float, float]] = []
         s2_cis: list[tuple[float, float, float]] = []
         phase_diag: dict = {
+            "gate_a_handoff": handoff_payload,
             "grid": grid.describe(),
             "windows": [w.to_dict() for w in windows],
             "flux": {"scales_native": scales.tolist(), "mean": np.nanmean(flux, axis=0).tolist(), "status": flux_status, "slope_ci": list(map(float, flux_slope_ci)), "sign_ci": [list(map(float, ci)) for ci in flux_sign_ci]},
@@ -292,10 +339,26 @@ def run_kolmogorov(
         phase_diag.update({"local_isotropy_admissible": local_isotropy, "core_diagnostics": core, "ko_resolved": ko_resolved, "ko_supported": ko_supported, "isotropic_spectrum_secondary": {"k": iso_k.tolist() if iso_k is not None else [], "mean": np.nanmean(iso_specs_arr, axis=0).tolist() if iso_specs_arr.size else []}})
         diagnostics["phases"][phase] = phase_diag
         status = "KO_SUPPORTED" if ko_supported is True else "KO_INCONSISTENT" if ko_supported is False else "KO_UNRESOLVED"
-        phase_summary[phase] = {"status": status, "ko_resolved": ko_resolved, "ko_supported": ko_supported, "core_diagnostics": core, "local_isotropy_admissible": local_isotropy}
-        metrics.append({"phase": phase, "status": status, "ko_resolved": ko_resolved, "ko_supported": ko_supported, "local_isotropy_admissible": local_isotropy, **{f"status_{k}": v for k, v in core.items()}})
+        phase_summary[phase] = {
+            "status": status,
+            "ko_resolved": ko_resolved,
+            "ko_supported": ko_supported,
+            "core_diagnostics": core,
+            "local_isotropy_admissible": local_isotropy,
+            "gate_a_handoff": handoff_payload,
+        }
+        metrics.append({
+            "phase": phase,
+            "status": status,
+            "ko_resolved": ko_resolved,
+            "ko_supported": ko_supported,
+            "local_isotropy_admissible": local_isotropy,
+            "gate_a_handoff_authorized": True,
+            "gate_a_handoff_source": phase_handoff.source,
+            **{f"status_{k}": v for k, v in core.items()},
+        })
         uncertainty.append({"phase": phase, "direction": "all", "quantity": "flux_log_slope", "lower": flux_slope_ci[0], "median": flux_slope_ci[1], "upper": flux_slope_ci[2], "theory_target": 0.0, "bootstrap_axis": "realizations"})
-        append_log(run_dir, f"{phase} {status}")
+        append_log(run_dir, f"{phase} {status}; handoff={phase_handoff.source}")
 
         try:
             import matplotlib
