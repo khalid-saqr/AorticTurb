@@ -49,6 +49,9 @@ For each policy, the already-computed Gate-A multiscale evidence (spatial cohere
 correlation decay, forward transfer, and measurement-noise criterion where available) is
 projected through that readiness rule. These projections remain sensitivity diagnostics;
 they do not rewrite the primary Gate-A decision and do not independently authorize KO.
+
+A sensitivity run is accepted only when its source Gate-A diagnostics explicitly record the
+formal primary policy. Legacy Gate-A runs must be rerun rather than relabeled.
 """
 
 
@@ -92,6 +95,26 @@ def _laminar_evidence(phase_diag: dict[str, Any], noise_ceiling: float | None) -
     upper = float(rms_ci[2])
     transfer = bool(phase_diag.get("forward_transfer_supported", False))
     return bool(np.isfinite(upper) and upper <= noise_ceiling and not transfer)
+
+
+def _validate_source_primary_policy(regime_diagnostics: dict[str, Any]) -> None:
+    phases = regime_diagnostics.get("phases")
+    if not isinstance(phases, dict):
+        raise ValueError("Gate-A diagnostics must contain a 'phases' object")
+    for phase in PHASES:
+        phase_diag = phases.get(phase)
+        if not isinstance(phase_diag, dict):
+            raise ValueError(f"Missing Gate-A diagnostics for {phase}")
+        readiness = phase_diag.get("readiness")
+        if not isinstance(readiness, dict):
+            raise ValueError(f"Missing Gate-A readiness provenance for {phase}")
+        policy = readiness.get("support_gate_policy")
+        if policy != PRIMARY_SUPPORT_POLICY:
+            raise ValueError(
+                f"Source Gate-A run for {phase} used support policy {policy!r}; "
+                f"expected {PRIMARY_SUPPORT_POLICY!r}. Rerun Gate A with the current "
+                "canonical implementation before running support sensitivity."
+            )
 
 
 def _locked_sensitivity_config(config: dict) -> tuple[tuple[str, ...], int, float]:
@@ -193,6 +216,7 @@ def run_support_sensitivity(
     append_log(run_dir, f"source regime={regime_dir}")
 
     regime_diagnostics = _load_json(diagnostics_path)
+    _validate_source_primary_policy(regime_diagnostics)
     regime_summary = _load_json(regime_summary_path)
     source_config = _load_json(source_config_path)
     source_rcfg = source_config.get("regime", {})
