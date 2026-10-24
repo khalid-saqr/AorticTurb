@@ -14,6 +14,7 @@ from .data.verify import verify_dataset
 from .validation.startup_gate import run_startup_gate
 from .decomposition.driver import run_decomposition
 from .regime.driver import run_regime
+from .regime.sensitivity_driver import run_support_sensitivity
 from .kolmogorov.driver import run_kolmogorov
 from .taylor.driver import run_taylor
 from .anisotropy.driver import run_anisotropy
@@ -84,6 +85,11 @@ def decompose(root: Path = typer.Option(..., "--root", exists=True, file_okay=Fa
 @app.command()
 def regime(root: Path = typer.Option(..., "--root", exists=True, file_okay=False), decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False), output: Path = typer.Option(Path("outputs"), "--output", "-o"), config: Path | None = typer.Option(None, "--config")) -> None:
     console.print_json(json.dumps(run_regime(root, decomposition, output, _cfg(config))))
+
+
+@app.command("support-sensitivity")
+def support_sensitivity(root: Path = typer.Option(..., "--root", exists=True, file_okay=False), decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False), regime_run: Path = typer.Option(..., "--regime", exists=True, file_okay=False), output: Path = typer.Option(Path("outputs"), "--output", "-o"), config: Path | None = typer.Option(None, "--config")) -> None:
+    console.print_json(json.dumps(run_support_sensitivity(root, decomposition, regime_run, output, _cfg(config))))
 
 
 @app.command()
