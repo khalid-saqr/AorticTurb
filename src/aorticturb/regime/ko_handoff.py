@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -46,11 +47,64 @@ def _load_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _same_path(recorded: str, actual: Path) -> bool:
-    return Path(recorded).expanduser().resolve() == actual.expanduser().resolve()
+def _sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(chunk_size), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _input_hashes(path: Path) -> set[str]:
+    """Return the SHA-256 values recorded in a run's input-hash ledger."""
+    hashes: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        digest = line.split(maxsplit=1)[0].lower()
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ValueError(f"Malformed input hash record in {path}: {raw_line!r}")
+        hashes.add(digest)
+    return hashes
+
+
+def _validate_sensitivity_upstream_hashes(
+    sensitivity_dir: Path,
+    decomposition_dir: Path,
+    regime_dir: Path,
+) -> None:
+    """Cryptographically bind sensitivity evidence to the KO upstream runs.
+
+    The sensitivity producer hashes the decomposition summary and the source Gate-A
+    config, diagnostics, and regime summary as extra inputs. Comparing content hashes
+    avoids any dependence on the caller's current working directory or on whether those
+    source paths were originally supplied as absolute or relative paths.
+    """
+    ledger = sensitivity_dir / "input_hashes.txt"
+    if not ledger.is_file():
+        raise FileNotFoundError(ledger)
+    recorded = _input_hashes(ledger)
+
+    required = (
+        decomposition_dir / "decomposition_summary.json",
+        regime_dir / "config.json",
+        regime_dir / "diagnostics.json",
+        regime_dir / "regime_summary.json",
+    )
+    for source in required:
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        digest = _sha256(source)
+        if digest not in recorded:
+            raise ValueError(
+                "Support-sensitivity provenance mismatch: the saved sensitivity run did "
+                f"not hash the supplied upstream file {source}."
+            )
 
 
 def resolve_ko_handoff(
+    decomposition_dir: str | Path,
     regime_dir: str | Path,
     support_sensitivity_dir: str | Path | None = None,
 ) -> dict[str, GateAHandoff]:
@@ -59,12 +113,15 @@ def resolve_ko_handoff(
     The primary Gate-A result is never modified. A phase is admitted directly when the
     primary Gate-A run records ``turbulence_established=True``. Otherwise, a caller may
     explicitly supply the saved support-sensitivity run. That handoff is accepted only when
-    all three locked non-primary support comparators are evaluable and concordantly project
-    ``STOCHASTIC_MULTISCALE_SUPPORTED`` with ``turbulence_established=True``.
+    the sensitivity artifact is cryptographically bound to the same decomposition and
+    Gate-A inputs used for KO, and all three locked non-primary support comparators are
+    evaluable and concordantly project ``STOCHASTIC_MULTISCALE_SUPPORTED`` with
+    ``turbulence_established=True``.
 
     This is a provenance-bearing handoff rule, not a replacement primary classification.
     Missing, partial, mismatched, or discordant sensitivity evidence fails closed.
     """
+    decomposition_dir = Path(decomposition_dir).resolve()
     regime_dir = Path(regime_dir).resolve()
     regime_path = regime_dir / "regime_summary.json"
     if not regime_path.is_file():
@@ -83,12 +140,19 @@ def resolve_ko_handoff(
             raise FileNotFoundError(sensitivity_path)
         sensitivity = _load_object(sensitivity_path)
 
-        source_regime = sensitivity.get("source_regime_run")
-        if not isinstance(source_regime, str) or not _same_path(source_regime, regime_dir):
-            raise ValueError(
-                "Support-sensitivity provenance mismatch: source_regime_run does not match "
-                f"the supplied regime directory {regime_dir}."
-            )
+        # The input-hash ledger is the authoritative link between sensitivity evidence
+        # and the decomposition/Gate-A artifacts used by the KO run. This remains valid
+        # even when the original sensitivity command used relative source paths.
+        _validate_sensitivity_upstream_hashes(
+            sensitivity_dir,
+            decomposition_dir,
+            regime_dir,
+        )
+
+        if not isinstance(sensitivity.get("source_decomposition_run"), str):
+            raise ValueError("Support-sensitivity run is missing source_decomposition_run.")
+        if not isinstance(sensitivity.get("source_regime_run"), str):
+            raise ValueError("Support-sensitivity run is missing source_regime_run.")
         if sensitivity.get("primary_policy_unchanged") != LEGACY_GLOBAL_FRACTION:
             raise ValueError("Support-sensitivity run does not preserve the legacy primary policy.")
         if sensitivity.get("policies_are_sensitivity_comparators_only") is not True:
