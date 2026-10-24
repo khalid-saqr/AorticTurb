@@ -22,6 +22,6 @@ def test_reynolds_stress_and_k():
             [[1.0, 0.0, 0.0]],
         ]
     )
-    R, k = reynolds_stress(residuals, ddof=1)
-    np.testing.assert_allclose(R[0, 0, 0], 2.0)
-    np.testing.assert_allclose(k[0], 1.0)
+    R, k = reynolds_stress(residuals)
+    np.testing.assert_allclose(R[0, 0, 0], 1.0)
+    np.testing.assert_allclose(k[0], 0.5)

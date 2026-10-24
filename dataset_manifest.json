@@ -16,11 +16,17 @@
     "license": "CC BY 4.0"
   },
   "expected_layout": {
-    "velocity_root": "raw/M_medium_root/AAo",
-    "geometry_root": "geometry",
+    "provenance_root": "00_provenance",
+    "velocity_root": "01_raw_data/M_medium_root/AAo",
+    "geometry_root": "02_metadata_geometry",
     "metadata_file": "METADATA.json",
     "agents_file": "AGENTS.md",
-    "checksum_file": "SHA256SUMS.txt"
+    "package_checksum_file": "SHA256SUMS.txt",
+    "required_provenance_manifests": [
+      "00_provenance/transfer_manifests/pass5_integrity_audit.json",
+      "00_provenance/transfer_manifests/acquisition_manifest_v1.json",
+      "00_provenance/transfer_manifests/geometry_manifest.json"
+    ]
   },
   "selection": {
     "geometry": "M",
@@ -37,12 +43,12 @@
     "geometry_file_count": 4,
     "total_source_file_count": 52
   },
-  "geometry_files": [
-    "M_aortic_root.STL",
-    "S_aortic_root.STL",
-    "L_aortic_root.STL",
-    "NS_aortic_root.STL"
-  ],
+  "geometry_files": {
+    "M": "02_metadata_geometry/M_medium_root/original_geometry/M_aortic_root.STL",
+    "S": "02_metadata_geometry/S_small_root/original_geometry/S_aortic_root.STL",
+    "L": "02_metadata_geometry/L_large_root/original_geometry/L_aortic_root.STL",
+    "NS": "02_metadata_geometry/NS_non_sinus_root/original_geometry/NS_aortic_root.STL"
+  },
   "velocity_format": {
     "container": "NPY",
     "dtype": "float64",

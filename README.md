@@ -30,7 +30,7 @@ The only primary terminal classifications are:
 ## Dataset
 
 The analysis dataset will be released separately on Zenodo as a compressed,
-project-ready subset of the original Hasler–Obrist deposition.
+provenance-preserving package of the finalized project tree.
 
 Until that curated Zenodo record is published, `dataset_manifest.json` intentionally
 contains a placeholder record ID and archive checksum.
@@ -69,7 +69,8 @@ aorticturb dataset inspect --root data/hasler_obrist_tomopiv
 
 The fetch command resolves the Zenodo record, downloads the archive, verifies the
 archive SHA-256 when provided, extracts it, then executes the dataset verification
-gate.
+gate. The archive preserves `00_provenance`, `01_raw_data`, and
+`02_metadata_geometry`; it is not reorganized into a second data layout.
 
 Before the Zenodo record is published, a local extracted dataset can be verified
 directly:

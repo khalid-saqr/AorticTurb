@@ -41,7 +41,7 @@ def phase_decomposition(
 def reynolds_stress(
     residuals: np.ndarray,
     *,
-    ddof: int = 1,
+    ddof: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return Reynolds-stress tensor and k at each node.
 

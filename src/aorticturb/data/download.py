@@ -88,8 +88,17 @@ def fetch_dataset(
     with zipfile.ZipFile(archive_path) as archive:
         archive.extractall(output)
 
-    result = verify_dataset(output, verify_checksums=True)
+    dataset_root = output
+    if not (dataset_root / "METADATA.json").exists():
+        candidates = [
+            p for p in dataset_root.iterdir()
+            if p.is_dir() and (p / "METADATA.json").exists()
+        ]
+        if len(candidates) == 1:
+            dataset_root = candidates[0]
+
+    result = verify_dataset(dataset_root, verify_checksums=True)
     if not result.ok:
         raise RuntimeError("Extracted dataset failed verification: " + "; ".join(result.errors))
 
-    return output
+    return dataset_root

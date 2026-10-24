@@ -5,7 +5,7 @@ from pathlib import Path
 import hashlib
 
 from ..constants import BYTES_PER_VELOCITY_FILE, PHASES, REALIZATIONS
-from .layout import expected_geometry_paths, phase_dir
+from .layout import expected_geometry_paths, phase_dir, provenance_manifest_paths
 
 
 @dataclass(frozen=True)
@@ -82,11 +82,18 @@ def verify_dataset(root: str | Path, *, verify_checksums: bool = True) -> Verifi
         if not (root / required).exists():
             errors.append(f"Missing required project file: {root / required}")
 
+    for label, path in provenance_manifest_paths(root).items():
+        if not path.exists():
+            errors.append(f"Missing required provenance manifest ({label}): {path}")
+
     checksum_path = root / "SHA256SUMS.txt"
     checksums = parse_sha256sums(checksum_path)
     if verify_checksums:
         if not checksum_path.exists():
-            warnings.append("SHA256SUMS.txt not found; per-file checksum verification skipped.")
+            errors.append(
+                "Missing package-level SHA256SUMS.txt. The curated Zenodo archive must "
+                "ship a checksum ledger for its exact extracted layout."
+            )
         else:
             for relpath, expected in checksums.items():
                 path = root / relpath
@@ -96,6 +103,8 @@ def verify_dataset(root: str | Path, *, verify_checksums: bool = True) -> Verifi
                 observed = sha256_file(path)
                 if observed.lower() != expected.lower():
                     errors.append(f"SHA-256 mismatch: {relpath}")
+    elif not checksum_path.exists():
+        warnings.append("SHA256SUMS.txt not found; checksum verification was not requested.")
 
     return VerificationResult(
         ok=not errors,
