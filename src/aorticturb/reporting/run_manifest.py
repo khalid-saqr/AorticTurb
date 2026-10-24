@@ -16,6 +16,7 @@ ANALYSIS_BRANCHES = {
     "02_kolmogorov_obukhov",
     "03_taylor_hypothesis",
     "04_lumley_anisotropy",
+    "04b_signed_interscale_transfer",
     "05_canonical_diagnostics",
 }
 
