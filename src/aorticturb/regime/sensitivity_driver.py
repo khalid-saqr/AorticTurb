@@ -17,6 +17,7 @@ from ..reporting.run_manifest import (
     write_csv,
     write_json,
 )
+from ..validation.startup_gate import run_startup_gate
 from .support_sensitivity import (
     DEFAULT_SUPPORT_SENSITIVITY_POLICIES,
     LEGACY_GLOBAL_FRACTION,
@@ -141,14 +142,7 @@ def run_support_sensitivity(
     dataset_root = Path(dataset_root)
     decomposition_dir = Path(decomposition_dir)
     regime_dir = Path(regime_dir)
-    base_run_id = run_id or new_run_id()
-    if not base_run_id.endswith("_support_sensitivity"):
-        base_run_id = f"{base_run_id}_support_sensitivity"
-    run_dir = create_run_directory(
-        output_root,
-        "01_laminar_vs_unsteady",
-        run_id=base_run_id,
-    )
+    policies, min_windows, required_window_fraction = _locked_sensitivity_config(config)
 
     diagnostics_path = regime_dir / "diagnostics.json"
     regime_summary_path = regime_dir / "regime_summary.json"
@@ -163,6 +157,14 @@ def run_support_sensitivity(
         if not path.exists():
             raise FileNotFoundError(path)
 
+    base_run_id = run_id or new_run_id()
+    if not base_run_id.endswith("_support_sensitivity"):
+        base_run_id = f"{base_run_id}_support_sensitivity"
+    run_dir = create_run_directory(
+        output_root,
+        "01_laminar_vs_unsteady",
+        run_id=base_run_id,
+    )
     initialize_run(
         run_dir,
         branch="01_laminar_vs_unsteady",
@@ -176,6 +178,22 @@ def run_support_sensitivity(
             regime_summary_path,
         ],
     )
+
+    gate = run_startup_gate(
+        dataset_root,
+        verify_checksums=config.get("dataset", {}).get("verify_checksums", True),
+        deep_content_check=True,
+    )
+    write_json(run_dir / "startup_gate.json", gate.to_dict())
+    if not gate.passed:
+        append_log(run_dir, "support sensitivity aborted: startup gate failed")
+        finalize_run(
+            run_dir,
+            status="FAILED",
+            warnings=["Mandatory startup gate failed; no sensitivity inference performed."],
+        )
+        raise RuntimeError("Startup gate failed: " + json.dumps(gate.to_dict()))
+
     append_log(run_dir, f"source decomposition={decomposition_dir}")
     append_log(run_dir, f"source regime={regime_dir}")
 
@@ -187,7 +205,6 @@ def run_support_sensitivity(
     min_global = float(source_rcfg.get("min_common_support_fraction", 0.50))
     noise_raw = source_rcfg.get("measurement_noise_rms_max")
     noise_ceiling = None if noise_raw is None else float(noise_raw)
-    policies, min_windows, required_window_fraction = _locked_sensitivity_config(config)
 
     rows: list[dict[str, Any]] = []
     phase_payload: dict[str, Any] = {}
