@@ -1,0 +1,27 @@
+dataset:
+  root: data/hasler_obrist_tomopiv
+  verify_checksums: true
+
+analysis:
+  phases: [t018, t021, t024]
+  realizations_per_phase: 16
+  support_policy: intersection
+  bootstrap_samples: 1000
+  random_seed: 20261024
+
+regime:
+  min_common_support_fraction: 0.50
+  min_realizations: 12
+
+kolmogorov:
+  window_shape: [32, 32, 32]
+  overlap: 0.50
+  min_valid_fraction: 0.90
+  taper: hann
+  structure_orders: [2, 3, 4, 6]
+
+taylor:
+  fluctuation_ratio_warn: 0.20
+
+output:
+  root: outputs
