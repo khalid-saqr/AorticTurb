@@ -8,6 +8,7 @@ LEGACY_GLOBAL_FRACTION = "legacy_global_fraction"
 STRICT_MASK_CONSISTENCY = "strict_mask_consistency"
 FULLY_FINITE_LOCAL_WINDOWS = "fully_finite_local_windows"
 STRICT_MASK_AND_LOCAL_WINDOWS = "strict_mask_and_local_windows"
+PRIMARY_SUPPORT_POLICY = STRICT_MASK_AND_LOCAL_WINDOWS
 
 DEFAULT_SUPPORT_SENSITIVITY_POLICIES = (
     LEGACY_GLOBAL_FRACTION,
@@ -19,13 +20,7 @@ DEFAULT_SUPPORT_SENSITIVITY_POLICIES = (
 
 @dataclass(frozen=True)
 class SupportPolicyEvaluation:
-    """Readiness result for one pre-specified support policy.
-
-    ``ready`` is ``None`` when the required audit quantity was not recorded, so an older
-    run cannot be silently interpreted as passing or failing a criterion it never measured.
-    These evaluations are sensitivity diagnostics; they do not select the primary Gate-A
-    policy or directly classify turbulence.
-    """
+    """Readiness result for one pre-specified support policy."""
 
     policy: str
     evaluable: bool
@@ -200,11 +195,11 @@ def evaluate_support_policy_sensitivity(
     required_local_window_valid_fraction: float = 1.0,
     policies: tuple[str, ...] = DEFAULT_SUPPORT_SENSITIVITY_POLICIES,
 ) -> SupportSensitivityResult:
-    """Compare pre-specified support-readiness policies without selecting a winner.
+    """Compare the locked support-readiness policies around the formal primary policy.
 
-    The policies are defined from support semantics, not from the observed turbulence
-    outcome. The historical whole-lattice policy remains the primary policy. Alternative
-    policies are sensitivity comparators only.
+    The formal Gate-A policy is ``strict_mask_and_local_windows``. The historical
+    whole-lattice occupancy rule remains in this analysis as a provenance/sensitivity
+    comparator, not as the primary readiness rule.
     """
     if min_fully_finite_windows < 1:
         raise ValueError("min_fully_finite_windows must be at least 1")
@@ -282,7 +277,7 @@ def evaluate_support_policy_sensitivity(
         bool(selected[name].ready) for name in evaluable if selected[name].ready is not None
     ]
     return SupportSensitivityResult(
-        primary_policy=LEGACY_GLOBAL_FRACTION,
+        primary_policy=PRIMARY_SUPPORT_POLICY,
         policies=selected,
         evaluable_policies=evaluable,
         readiness_values=readiness_values,
@@ -298,11 +293,10 @@ def project_gate_a_decision(
     forward_transfer_supported: bool,
     laminar_evidence: bool,
 ) -> dict[str, Any]:
-    """Project the same downstream evidence through one readiness comparator.
+    """Project the same downstream evidence through one support comparator.
 
-    This is a counterfactual sensitivity result, not a primary classification. The primary
-    Gate-A result remains governed by the historical policy until an explicit project-level
-    decision changes it.
+    This remains a sensitivity projection. The formal primary Gate-A decision is produced
+    directly by the regime run using ``strict_mask_and_local_windows``.
     """
     if not readiness.evaluable or readiness.ready is None:
         return {
