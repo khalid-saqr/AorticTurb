@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 import numpy as np
 
+from .support_sensitivity import STRICT_MASK_AND_LOCAL_WINDOWS
 
-LEGACY_SUPPORT_GATE_POLICY = "legacy_global_fraction"
+
+PRIMARY_SUPPORT_GATE_POLICY = STRICT_MASK_AND_LOCAL_WINDOWS
 LEGACY_SUPPORT_FRACTION_DEFINITION = (
     "common_intersection_nodes / total_cartesian_lattice_nodes"
 )
@@ -16,6 +18,9 @@ class GateAEvidence:
     support_fraction: float
     support_fraction_definition: str
     support_gate_policy: str
+    intersection_over_union_fraction: float | None
+    fully_finite_window_count: int
+    local_window_min_valid_fraction: float | None
     fluctuation_ratio_median: float | None
     decision: str
     reasons: list[str]
@@ -38,22 +43,36 @@ def evaluate_gate_a(
     residuals: np.ndarray,
     *,
     support_fraction_value: float,
+    intersection_over_union_fraction: float | None,
+    fully_finite_window_count: int,
+    local_window_min_valid_fraction: float | None,
     min_realizations: int = 12,
-    min_support_fraction: float = 0.50,
-    support_gate_policy: str = LEGACY_SUPPORT_GATE_POLICY,
+    min_fully_finite_windows: int = 1,
+    required_local_window_valid_fraction: float = 1.0,
+    support_gate_policy: str = PRIMARY_SUPPORT_GATE_POLICY,
     support_fraction_definition: str = LEGACY_SUPPORT_FRACTION_DEFINITION,
 ) -> GateAEvidence:
-    """Conservative readiness gate, not a turbulence detector.
+    """Gate-A readiness check based on measurement support actually used by the diagnostics.
 
-    Pass 1 deliberately preserves the historical Gate-A readiness decision. The support
-    fraction used by that rule is now named explicitly so it cannot be confused with
-    realization-to-realization mask agreement or local-window validity. Alternative
-    support policies are not enabled here; they require the planned sensitivity analysis.
+    The historical whole-lattice occupancy is retained as an audit quantity only. It is not
+    a readiness criterion because it changes with the rectangular storage domain even when
+    the measured velocity support is unchanged. Primary readiness instead requires:
+
+    1. the minimum number of independent realizations;
+    2. exact realization-mask consistency (intersection/union = 1); and
+    3. at least one fully finite local rectangular window used by the multiscale diagnostics.
+
+    This function remains a readiness gate, not a turbulence detector.
     """
-    if support_gate_policy != LEGACY_SUPPORT_GATE_POLICY:
+    if support_gate_policy != PRIMARY_SUPPORT_GATE_POLICY:
         raise ValueError(
-            "Only the legacy_global_fraction Gate-A support policy is available in "
-            "this pass; alternative policies require an explicit sensitivity analysis."
+            "Canonical Gate-A support policy is strict_mask_and_local_windows."
+        )
+    if min_fully_finite_windows < 1:
+        raise ValueError("min_fully_finite_windows must be at least 1")
+    if required_local_window_valid_fraction != 1.0:
+        raise ValueError(
+            "Canonical Gate-A local-window valid fraction is fixed at 1.0."
         )
 
     n = residuals.shape[0]
@@ -61,11 +80,29 @@ def evaluate_gate_a(
 
     if n < min_realizations:
         reasons.append(f"Only {n} realizations; require at least {min_realizations}.")
-    if support_fraction_value < min_support_fraction:
+
+    if intersection_over_union_fraction is None:
         reasons.append(
-            "Legacy global common-support fraction "
-            f"{support_fraction_value:.3f} is below {min_support_fraction:.3f}; "
-            f"definition: {support_fraction_definition}."
+            "Realization-mask agreement is unavailable; exact mask consistency is required."
+        )
+    elif intersection_over_union_fraction != 1.0:
+        reasons.append(
+            "Realization masks are not exactly consistent: intersection/union="
+            f"{intersection_over_union_fraction:.6f}, required 1.000000."
+        )
+
+    if fully_finite_window_count < min_fully_finite_windows:
+        reasons.append(
+            f"Only {fully_finite_window_count} fully finite local windows; require at least "
+            f"{min_fully_finite_windows}."
+        )
+    elif local_window_min_valid_fraction is None:
+        reasons.append("Local-window support fraction was not recorded.")
+    elif local_window_min_valid_fraction < required_local_window_valid_fraction:
+        reasons.append(
+            "Minimum local-window valid fraction "
+            f"{local_window_min_valid_fraction:.6f} is below required "
+            f"{required_local_window_valid_fraction:.6f}."
         )
 
     ratio = fluctuation_ratio(mean_velocity, residuals)
@@ -77,6 +114,9 @@ def evaluate_gate_a(
         support_fraction=support_fraction_value,
         support_fraction_definition=support_fraction_definition,
         support_gate_policy=support_gate_policy,
+        intersection_over_union_fraction=intersection_over_union_fraction,
+        fully_finite_window_count=fully_finite_window_count,
+        local_window_min_valid_fraction=local_window_min_valid_fraction,
         fluctuation_ratio_median=median,
         decision=decision,
         reasons=reasons,

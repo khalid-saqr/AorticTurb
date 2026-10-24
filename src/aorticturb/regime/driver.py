@@ -23,10 +23,12 @@ the later Kolmogorov–Obukhov stage. Bootstrap resampling is exclusively across
 independent realizations. A laminar/unsteady result requires an externally supplied
 measurement-noise RMS ceiling; otherwise failure to establish turbulence is `UNRESOLVED`.
 
-Support quantities are reported with distinct semantics. Whole-lattice common-support
-occupancy is not treated as synonymous with realization-mask agreement or local-window
-validity. This pass preserves the historical whole-lattice readiness threshold exactly;
-the additional support diagnostics are audit outputs only and cannot change classification.
+Primary support readiness is based on the support actually required by these diagnostics:
+exact realization-mask consistency plus at least one fully finite local rectangular window.
+The historical whole-lattice common-support occupancy is still reported for provenance and
+comparison, but it is not a Gate-A readiness criterion because it measures how much of the
+rectangular storage lattice is occupied by the measured domain, not whether the ensemble
+support is reproducible or whether the local diagnostics are admissible.
 """
 
 
@@ -136,10 +138,19 @@ def run_regime(dataset_root: str | Path, decomposition_dir: str | Path, output_r
         grid = infer_structured_grid(xyz)
         support_grid = grid.reshape_nodes(support)
         windows = adaptive_windows(support_grid, preferred=preferred, fallback_sizes=fallback, overlap=overlap, min_valid_fraction=1.0, require_full=True, max_windows=max_windows)
-        readiness = evaluate_gate_a(mean, residuals, support_fraction_value=float(support.mean()), min_realizations=int(rcfg.get("min_realizations", 12)), min_support_fraction=float(rcfg.get("min_common_support_fraction", 0.50)))
+        support_semantics = _support_semantics(data, windows)
+        readiness = evaluate_gate_a(
+            mean,
+            residuals,
+            support_fraction_value=float(support.mean()),
+            intersection_over_union_fraction=support_semantics["intersection_over_union_fraction"],
+            fully_finite_window_count=support_semantics["fully_finite_window_count"],
+            local_window_min_valid_fraction=support_semantics["local_window_min_valid_fraction"],
+            min_realizations=int(rcfg.get("min_realizations", 12)),
+        )
         phase_diag = {
             "readiness": readiness.to_dict(),
-            "support_semantics": _support_semantics(data, windows),
+            "support_semantics": support_semantics,
             "grid": grid.describe(),
             "windows": [w.to_dict() for w in windows],
         }

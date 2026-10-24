@@ -20,7 +20,7 @@ from ..reporting.run_manifest import (
 from ..validation.startup_gate import run_startup_gate
 from .support_sensitivity import (
     DEFAULT_SUPPORT_SENSITIVITY_POLICIES,
-    LEGACY_GLOBAL_FRACTION,
+    PRIMARY_SUPPORT_POLICY,
     evaluate_support_policy_sensitivity,
     project_gate_a_decision,
 )
@@ -28,32 +28,30 @@ from .support_sensitivity import (
 
 METHODS = """# Gate A support-policy sensitivity analysis
 
-This run compares pre-specified support-readiness policies without selecting a policy from
-its turbulence outcome. The historical whole-lattice common-support criterion remains the
-primary Gate-A rule and is not overwritten.
+This run compares the same pre-specified support-readiness policies after the explicit
+project-level correction of Gate A. The formal primary support policy is now
+`strict_mask_and_local_windows`: exact realization-mask consistency together with at least
+one fully finite local rectangular window. The historical whole-lattice occupancy rule is
+retained as a provenance/sensitivity comparator only.
 
-The sensitivity comparators are:
+The compared policies are:
 
 1. `legacy_global_fraction`: common intersection nodes divided by all nodes in the deposited
-   Cartesian lattice, using the exact threshold and minimum-realization rule recorded by the
-   source Gate-A run.
+   Cartesian lattice, using the historical 0.50 threshold recorded in configuration.
 2. `strict_mask_consistency`: exact equality of finite-velocity support across realizations,
-   expressed as intersection/union = 1. No empirical near-unity threshold is introduced.
+   expressed as intersection/union = 1.
 3. `fully_finite_local_windows`: at least one local rectangular analysis window with valid
-   support fraction 1.0, matching the support requirement already used by the spatial
-   multiscale diagnostics.
+   support fraction 1.0.
 4. `strict_mask_and_local_windows`: conjunction of exact mask consistency and local-window
-   admissibility.
-
-The comparator set and the new local criterion are locked for this canonical sensitivity
-pass. Changing them requires an explicit code/project change rather than a config edit after
-observing the result.
+   admissibility; this is the formal primary Gate-A readiness policy.
 
 For each policy, the already-computed Gate-A multiscale evidence (spatial coherence,
 correlation decay, forward transfer, and measurement-noise criterion where available) is
-projected through that readiness rule. These projected decisions are counterfactual
-sensitivity results only. They do not replace the primary Gate-A decision, do not promote
-results to `05_results`, and do not open the KO branch automatically.
+projected through that readiness rule. These projections remain sensitivity diagnostics;
+they do not rewrite the primary Gate-A decision and do not independently authorize KO.
+
+A sensitivity run is accepted only when its source Gate-A diagnostics explicitly record the
+formal primary policy. Legacy Gate-A runs must be rerun rather than relabeled.
 """
 
 
@@ -99,6 +97,26 @@ def _laminar_evidence(phase_diag: dict[str, Any], noise_ceiling: float | None) -
     return bool(np.isfinite(upper) and upper <= noise_ceiling and not transfer)
 
 
+def _validate_source_primary_policy(regime_diagnostics: dict[str, Any]) -> None:
+    phases = regime_diagnostics.get("phases")
+    if not isinstance(phases, dict):
+        raise ValueError("Gate-A diagnostics must contain a 'phases' object")
+    for phase in PHASES:
+        phase_diag = phases.get(phase)
+        if not isinstance(phase_diag, dict):
+            raise ValueError(f"Missing Gate-A diagnostics for {phase}")
+        readiness = phase_diag.get("readiness")
+        if not isinstance(readiness, dict):
+            raise ValueError(f"Missing Gate-A readiness provenance for {phase}")
+        policy = readiness.get("support_gate_policy")
+        if policy != PRIMARY_SUPPORT_POLICY:
+            raise ValueError(
+                f"Source Gate-A run for {phase} used support policy {policy!r}; "
+                f"expected {PRIMARY_SUPPORT_POLICY!r}. Rerun Gate A with the current "
+                "canonical implementation before running support sensitivity."
+            )
+
+
 def _locked_sensitivity_config(config: dict) -> tuple[tuple[str, ...], int, float]:
     scfg = config.get("regime", {}).get("support_sensitivity", {})
     policies = tuple(
@@ -114,17 +132,17 @@ def _locked_sensitivity_config(config: dict) -> tuple[tuple[str, ...], int, floa
     )
     if policies != DEFAULT_SUPPORT_SENSITIVITY_POLICIES:
         raise ValueError(
-            "Canonical Pass-2 support sensitivity policies are locked to the pre-specified "
+            "Canonical support sensitivity policies are locked to the pre-specified "
             f"set {DEFAULT_SUPPORT_SENSITIVITY_POLICIES}; received {policies}."
         )
     if min_windows != 1:
         raise ValueError(
-            "Canonical Pass-2 local-window criterion is locked to at least one fully "
-            "finite analysis window."
+            "Canonical local-window criterion is locked to at least one fully finite "
+            "analysis window."
         )
     if required_window_fraction != 1.0:
         raise ValueError(
-            "Canonical Pass-2 local-window valid fraction is locked to 1.0."
+            "Canonical local-window valid fraction is locked to 1.0."
         )
     return policies, min_windows, required_window_fraction
 
@@ -198,11 +216,12 @@ def run_support_sensitivity(
     append_log(run_dir, f"source regime={regime_dir}")
 
     regime_diagnostics = _load_json(diagnostics_path)
+    _validate_source_primary_policy(regime_diagnostics)
     regime_summary = _load_json(regime_summary_path)
     source_config = _load_json(source_config_path)
     source_rcfg = source_config.get("regime", {})
     min_realizations = int(source_rcfg.get("min_realizations", 12))
-    min_global = float(source_rcfg.get("min_common_support_fraction", 0.50))
+    historical_min_global = float(source_rcfg.get("min_common_support_fraction", 0.50))
     noise_raw = source_rcfg.get("measurement_noise_rms_max")
     noise_ceiling = None if noise_raw is None else float(noise_raw)
 
@@ -223,7 +242,7 @@ def run_support_sensitivity(
             realizations=int(residuals.shape[0]),
             min_realizations=min_realizations,
             common_intersection_fraction_total=float(support.mean()),
-            min_common_support_fraction=min_global,
+            min_common_support_fraction=historical_min_global,
             intersection_over_union_fraction=mask_iou,
             fully_finite_window_count=window_count,
             local_window_min_valid_fraction=min_window_fraction,
@@ -260,7 +279,7 @@ def run_support_sensitivity(
                 {
                     "phase": phase,
                     "policy": policy,
-                    "is_primary_policy": policy == LEGACY_GLOBAL_FRACTION,
+                    "is_primary_policy": policy == PRIMARY_SUPPORT_POLICY,
                     "support_evaluable": evaluation.evaluable,
                     "support_ready": evaluation.ready,
                     "projected_decision": projection["decision"],
@@ -286,14 +305,17 @@ def run_support_sensitivity(
         projected_sensitive = len(set(projected_decisions)) > 1
         phase_payload[phase] = {
             "primary_gate_a": {
-                "policy": LEGACY_GLOBAL_FRACTION,
+                "policy": PRIMARY_SUPPORT_POLICY,
                 "decision": primary_decision,
                 "turbulence_established": primary_turbulence,
                 "unchanged_by_sensitivity_run": True,
             },
             "source_gate_a_parameters": {
                 "min_realizations": min_realizations,
-                "min_common_support_fraction": min_global,
+                "primary_support_policy": PRIMARY_SUPPORT_POLICY,
+                "min_fully_finite_windows": min_windows,
+                "required_local_window_valid_fraction": required_window_fraction,
+                "historical_legacy_min_common_support_fraction": historical_min_global,
                 "measurement_noise_rms_max": noise_ceiling,
             },
             "support_sensitivity": sensitivity.to_dict(),
@@ -318,7 +340,8 @@ def run_support_sensitivity(
         {
             "source_decomposition_run": str(decomposition_dir),
             "source_regime_run": str(regime_dir),
-            "primary_policy_unchanged": LEGACY_GLOBAL_FRACTION,
+            "primary_policy": PRIMARY_SUPPORT_POLICY,
+            "primary_policy_unchanged_by_sensitivity_run": True,
             "policies_are_sensitivity_comparators_only": True,
             "canonical_comparator_set_locked": True,
             "phases": phase_payload,
@@ -327,7 +350,8 @@ def run_support_sensitivity(
     summary = {
         "run_dir": str(run_dir),
         "source_regime_run": str(regime_dir),
-        "primary_policy_unchanged": LEGACY_GLOBAL_FRACTION,
+        "primary_policy": PRIMARY_SUPPORT_POLICY,
+        "primary_policy_unchanged_by_sensitivity_run": True,
         "phases": {
             phase: {
                 "primary_decision": payload["primary_gate_a"]["decision"],
