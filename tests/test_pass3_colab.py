@@ -32,6 +32,18 @@ def test_pass3_notebook_is_thin_and_pinned():
     assert "run_anisotropy" not in source
 
 
+def test_pass3_notebook_forces_import_from_pinned_checkout():
+    source = _notebook_source()
+    assert "--force-reinstall" in source
+    assert 'module_name == "aorticturb"' in source
+    assert 'module_name.startswith("aorticturb.")' in source
+    assert 'source_root = (WORKTREE / "src").resolve()' in source
+    assert "sys.path.insert(0, str(source_root))" in source
+    assert "importlib.invalidate_caches()" in source
+    assert "loaded_package = Path(aorticturb.__file__).resolve()" in source
+    assert "AORTICTURB_IMPORT_PROVENANCE_FAILED" in source
+
+
 def test_pass3_runner_is_syntax_valid_and_scope_locked():
     source = RUNNER.read_text(encoding="utf-8")
     ast.parse(source)
