@@ -121,7 +121,7 @@ def run_kolmogorov(
     sensitivity_dir = (
         Path(support_sensitivity_dir) if support_sensitivity_dir is not None else None
     )
-    handoff = resolve_ko_handoff(regime_dir, sensitivity_dir)
+    handoff = resolve_ko_handoff(decomposition_dir, regime_dir, sensitivity_dir)
     run_dir = create_run_directory(output_root, "02_kolmogorov_obukhov", run_id=run_id)
     extra_inputs = [
         decomposition_dir / "decomposition_summary.json",
