@@ -26,10 +26,19 @@ def run_kolmogorov(
     output_root: str | Path,
     config: dict,
     *,
+    support_sensitivity_dir: str | Path | None = None,
     run_id: str | None = None,
 ) -> dict:
-    """Run the KO stage and enforce local-homogeneity admissibility for K41 laws."""
-    result = _run_core(dataset_root, decomposition_dir, regime_dir, output_root, config, run_id=run_id)
+    """Run the KO stage and enforce Gate-A handoff and K41 admissibility checks."""
+    result = _run_core(
+        dataset_root,
+        decomposition_dir,
+        regime_dir,
+        output_root,
+        config,
+        support_sensitivity_dir=support_sensitivity_dir,
+        run_id=run_id,
+    )
     run_dir = Path(result["run_dir"])
     diagnostics_path = run_dir / "diagnostics.json"
     summary_path = run_dir / "kolmogorov_summary.json"
