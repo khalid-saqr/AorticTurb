@@ -93,8 +93,32 @@ def support_sensitivity(root: Path = typer.Option(..., "--root", exists=True, fi
 
 
 @app.command()
-def kolmogorov(root: Path = typer.Option(..., "--root", exists=True, file_okay=False), decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False), regime_run: Path = typer.Option(..., "--regime", exists=True, file_okay=False), output: Path = typer.Option(Path("outputs"), "--output", "-o"), config: Path | None = typer.Option(None, "--config")) -> None:
-    console.print_json(json.dumps(run_kolmogorov(root, decomposition, regime_run, output, _cfg(config))))
+def kolmogorov(
+    root: Path = typer.Option(..., "--root", exists=True, file_okay=False),
+    decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False),
+    regime_run: Path = typer.Option(..., "--regime", exists=True, file_okay=False),
+    output: Path = typer.Option(Path("outputs"), "--output", "-o"),
+    config: Path | None = typer.Option(None, "--config"),
+    support_sensitivity_run: Path | None = typer.Option(
+        None,
+        "--support-sensitivity",
+        exists=True,
+        file_okay=False,
+        help="Explicit saved Gate-A support-sensitivity run used for the KO handoff.",
+    ),
+) -> None:
+    console.print_json(
+        json.dumps(
+            run_kolmogorov(
+                root,
+                decomposition,
+                regime_run,
+                output,
+                _cfg(config),
+                support_sensitivity_dir=support_sensitivity_run,
+            )
+        )
+    )
 
 
 @app.command()
