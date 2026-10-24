@@ -13,3 +13,9 @@ def test_support_sensitivity_command_is_registered():
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "support-sensitivity" in result.stdout
+
+
+def test_backscatter_command_is_registered():
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "backscatter" in result.stdout
