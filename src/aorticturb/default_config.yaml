@@ -1,0 +1,33 @@
+dataset:
+  root: data/hasler_obrist_tomopiv
+  verify_checksums: true
+  deep_content_check: true
+analysis:
+  phases: [t018, t021, t024]
+  realizations_per_phase: 16
+  support_policy: intersection
+  bootstrap_samples: 1000
+  bootstrap_node_cap: 4096
+  random_seed: 20261024
+regime:
+  min_common_support_fraction: 0.50
+  min_realizations: 12
+  correlation_max_lag: 8
+  transfer_sigmas: [1.0, 2.0, 3.0]
+  measurement_noise_rms_max: null
+kolmogorov:
+  window_shape: [32, 32, 32]
+  fallback_window_sizes: [24, 16, 12, 8]
+  overlap: 0.50
+  max_windows: 4
+  max_lag: 8
+  minimum_scaling_points: 4
+  flux_sigmas: [1.0, 1.5, 2.0, 3.0, 4.0]
+taylor:
+  fluctuation_ratio_warn: 0.20
+diagnostics:
+  flatness_max_lag: 8
+physical:
+  kinematic_viscosity: null
+output:
+  root: outputs

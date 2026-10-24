@@ -1,21 +1,18 @@
 # Dataset contract
 
 AorticTurb targets a compressed, provenance-preserving package of the finalized
-Hasler–Obrist Tomo-PIV project tree.
-
-The future Zenodo archive should preserve the same scientific layout used during
-acquisition rather than reorganize raw data.
+Hasler–Obrist Tomo-PIV project tree. The future Zenodo archive should preserve the same
+scientific layout used during acquisition rather than reorganize raw data.
 
 ## Canonical selected velocity subset
 
-- Geometry: M
-- Domain: AAo
-- Phases: t018, t021, t024
-- Physical phase labels: 0.18 s, 0.21 s, 0.24 s
-- Realizations per phase: 16
-- Files per phase: B00001.npy through B00016.npy
-- Total velocity files: 48
-- Expected bytes per velocity file: 47,164,880
+- geometry: M
+- domain: AAo
+- phases: `t018`, `t021`, `t024`
+- physical phase labels: 0.18 s, 0.21 s, 0.24 s
+- realizations: `B00001.npy` through `B00016.npy` at every phase
+- total velocity fields: 48
+- bytes per velocity field: 47,164,880
 
 The deposited arrays use columns `[X, Y, Z, U, V, W]`. Source NaNs in velocity
 components are measurement-support information and must be preserved.
@@ -30,6 +27,8 @@ AGENTS.md
 SHA256SUMS.txt
 
 00_provenance/
+  checksums/
+    final_acquired_SHA256SUMS.txt
   transfer_manifests/
     pass5_integrity_audit.json
     acquisition_manifest_v1.json
@@ -50,8 +49,11 @@ SHA256SUMS.txt
   NS_non_sinus_root/original_geometry/NS_aortic_root.STL
 ```
 
-`SHA256SUMS.txt` is a packaging checksum ledger for the exact archive-relative paths.
-It is additional to the historical provenance ledgers under `00_provenance`.
+`SHA256SUMS.txt` is the package checksum ledger for the exact archive-relative paths.
+AorticTurb also requires the historical Pass-5 `final_acquired_SHA256SUMS.txt` ledger and
+cross-checks the package hashes against it. The historical ledger retains older geometry
+relative paths, so geometry provenance is resolved by canonical STL filename and hash;
+velocity paths are matched exactly. The historical ledger is never rewritten.
 
 ## Phase catalogue discrepancy
 

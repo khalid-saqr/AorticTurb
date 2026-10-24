@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.1",
+  "dataset_name": "Hasler-Obrist TomoPIV analysis subset",
+  "curated_zenodo": {
+    "record_id": null,
+    "doi": null,
+    "archive_name": null,
+    "archive_sha256": null,
+    "status": "PLACEHOLDER_UNTIL_CURATED_DATASET_IS_PUBLISHED"
+  },
+  "original_source": {
+    "repository": "Zenodo",
+    "record_id": 1163562,
+    "doi": "10.5281/zenodo.1163562",
+    "article_doi": "10.1371/journal.pone.0194384",
+    "license": "CC BY 4.0"
+  },
+  "expected_layout": {
+    "provenance_root": "00_provenance",
+    "velocity_root": "01_raw_data/M_medium_root/AAo",
+    "geometry_root": "02_metadata_geometry",
+    "metadata_file": "METADATA.json",
+    "agents_file": "AGENTS.md",
+    "package_checksum_file": "SHA256SUMS.txt",
+    "historical_final_acquired_checksum_file": "00_provenance/checksums/final_acquired_SHA256SUMS.txt",
+    "required_provenance_manifests": [
+      "00_provenance/transfer_manifests/pass5_integrity_audit.json",
+      "00_provenance/transfer_manifests/acquisition_manifest_v1.json",
+      "00_provenance/transfer_manifests/geometry_manifest.json"
+    ]
+  },
+  "selection": {
+    "geometry": "M",
+    "domain": "AAo",
+    "phases": {"t018": 0.18, "t021": 0.21, "t024": 0.24},
+    "realizations_per_phase": 16,
+    "realization_pattern": "B{index:05d}.npy",
+    "bytes_per_velocity_file": 47164880,
+    "velocity_file_count": 48,
+    "geometry_file_count": 4,
+    "total_source_file_count": 52
+  },
+  "geometry_files": {
+    "M": "02_metadata_geometry/M_medium_root/original_geometry/M_aortic_root.STL",
+    "S": "02_metadata_geometry/S_small_root/original_geometry/S_aortic_root.STL",
+    "L": "02_metadata_geometry/L_large_root/original_geometry/L_aortic_root.STL",
+    "NS": "02_metadata_geometry/NS_non_sinus_root/original_geometry/NS_aortic_root.STL"
+  },
+  "velocity_format": {
+    "container": "NPY",
+    "dtype": "float64",
+    "columns": ["X", "Y", "Z", "U", "V", "W"],
+    "representative_shape": [982600, 6],
+    "preserve_source_nan_mask": true
+  }
+}
