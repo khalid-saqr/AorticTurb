@@ -25,8 +25,27 @@ def invariants(b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def eigenvalues(b: np.ndarray) -> np.ndarray:
-    values = np.linalg.eigvalsh(np.asarray(b, dtype=float))
-    return np.flip(values, axis=-1)
+    """Return descending eigenvalues, preserving nonfinite nodes as NaN.
+
+    The anisotropy field legitimately contains NaNs outside finite measurement support.
+    NumPy's batched ``eigvalsh`` can fail the entire batch when any matrix is nonfinite,
+    so only fully finite 3x3 tensors are submitted to the eigensolver. Invalid nodes
+    retain NaN eigenvalues and are excluded downstream by the existing support/validity
+    masks.
+    """
+    b = np.asarray(b, dtype=float)
+    if b.shape[-2:] != (3, 3):
+        raise ValueError("b must end with shape (3, 3).")
+
+    flat = b.reshape((-1, 3, 3))
+    values = np.full((flat.shape[0], 3), np.nan, dtype=float)
+    finite = np.isfinite(flat).all(axis=(1, 2))
+
+    if finite.any():
+        solved = np.linalg.eigvalsh(flat[finite])
+        values[finite] = np.flip(solved, axis=-1)
+
+    return values.reshape(b.shape[:-2] + (3,))
 
 
 def barycentric_coordinates(b: np.ndarray) -> np.ndarray:
