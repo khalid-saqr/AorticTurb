@@ -33,33 +33,45 @@ def test_all_notebook_code_cells_are_syntax_valid():
 def test_rebuilt_notebook_uses_isolated_pinned_public_install():
     source = _code_source()
     assert f'AORTICTURB_COMMIT = "{PINNED_SCIENTIFIC_COMMIT}"' in source
-    assert "git+https://github.com/khalid-saqr/AorticTurb.git@" in source
-    assert 'Path("/content/aorticturb-pass3-venv")' in source
-    assert '"-m", "venv", "--system-site-packages"' in source
+    # The repository URL is intentionally assembled from plain string fragments so
+    # notebook/chat renderers cannot rewrite the executable value as Markdown.
+    assert 'REPO_HOST = "github" + ".com"' in source
+    assert 'REPO_PATH = "khalid-saqr/" + "AorticTurb.git"' in source
+    assert 'AORTICTURB_SPEC = "git+" + REPO_URL + "@" + AORTICTURB_COMMIT' in source
+    # Colab Python 3.13 may lack ensurepip/venv support, so isolation uses pip --target.
+    assert 'SITE_DIR = Path("/content/aorticturb-pass3-site")' in source
+    assert '"--target"' in source
     assert "direct_url.json" in source
     assert "INSTALLED_COMMIT != AORTICTURB_COMMIT" in source
 
 
-def test_rebuilt_notebook_has_no_old_self_checkout_or_kernel_import_machinery():
+def test_rebuilt_notebook_has_no_old_self_checkout_or_kernel_state_machinery():
     source = _code_source()
     forbidden = (
         "git clone",
         "WORKTREE",
-        "os.chdir",
         "sys.modules",
         "pass3_runner",
-        "import aorticturb",
+        "spec_from_file_location",
         "run_all(",
     )
     for token in forbidden:
         assert token not in source
+
+    # A stable /content cwd is intentional; the old failure mode was deleting the
+    # process's current worktree. The notebook must never chdir into a repo checkout.
+    assert 'os.chdir("/content")' in source
+    assert "os.chdir(WORKTREE)" not in source
 
 
 def test_rebuilt_notebook_scope_is_gate_decomposition_regime_sensitivity_only():
     source = _code_source()
     assert 'run_cli("gate", "--root", DATASET_ROOT)' in source
     assert '"decompose"' in source
-    assert '"regime"' in source
+    # Gate A is deliberately invoked through the package driver in a fresh Python
+    # subprocess so tracebacks and OS-level process termination remain visible.
+    assert "from aorticturb.regime.driver import run_regime" in source
+    assert "result = run_regime(" in source
     assert '"support-sensitivity"' in source
     assert '"kolmogorov"' not in source
     assert '"taylor"' not in source
