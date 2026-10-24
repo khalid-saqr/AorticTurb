@@ -9,6 +9,14 @@ import platform
 import sys
 from typing import Iterable
 
+ANALYSIS_BRANCHES = {
+    "01_laminar_vs_unsteady",
+    "02_kolmogorov_obukhov",
+    "03_taylor_hypothesis",
+    "04_lumley_anisotropy",
+    "05_canonical_diagnostics",
+}
+
 
 def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
     digest = hashlib.sha256()
@@ -22,11 +30,21 @@ def new_run_id() -> str:
     return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
 
 
-def create_run_directory(output_root: str | Path, branch: str, *, run_id: str | None = None) -> Path:
+def create_run_directory(workspace_root: str | Path, branch: str, *, run_id: str | None = None) -> Path:
+    """Create a run under the canonical AGENTS.md workspace tree."""
     run_id = run_id or new_run_id()
-    path = Path(output_root) / branch / run_id
+    root = Path(workspace_root)
+    if branch in ANALYSIS_BRANCHES:
+        base = root / "04_analysis" / branch
+    elif branch == "05_results":
+        base = root / "05_results"
+    else:
+        base = root / branch
+    path = base / run_id
     path.mkdir(parents=True, exist_ok=False)
     (path / "figures").mkdir()
+    # Temporary per-run staging. Decomposition moves reusable arrays to 03_processed_data
+    # before its final manifest is frozen; other stages leave this directory empty.
     (path / "processed").mkdir()
     (path / "logs").mkdir()
     return path
