@@ -7,7 +7,8 @@ import numpy as np
 from ..constants import PHASES, REALIZATIONS
 from ..data.layout import phase_dir
 from ..data.loader import load_velocity_field, split_field
-from ..validation.masks import common_support, realization_masks
+from ..validation.masks import realization_masks
+from ..validation.support import audit_realization_masks
 from ..validation.startup_gate import run_startup_gate
 from ..uncertainty.bootstrap import bootstrap_phase_energy
 from ..reporting.run_manifest import (
@@ -24,6 +25,11 @@ statistics; source NaNs are never filled. Reynolds stresses and `k = 0.5 R_ii` a
 computed at every common-support node. Uncertainty is bootstrapped across realizations,
 with the phase mean recomputed on each draw using a deterministic node subsample for
 computational tractability. Phases are never pooled.
+
+Measurement support is audited separately from turbulence classification. The audit records
+whole-lattice occupancy, union/intersection support, realization-to-realization mask
+agreement, and whether all realization masks are identical. These quantities are diagnostic
+only at this stage and do not alter the Gate-A decision rule.
 """
 
 
@@ -87,7 +93,10 @@ def run_decomposition(
         append_log(run_dir, f"loading {phase}")
         xyz, fields = load_phase(root, phase)
         masks = realization_masks(fields)
-        support = masks.all(axis=0)
+        support_audit = audit_realization_masks(masks)
+        support_count = masks.sum(axis=0).astype(np.uint8)
+        support_union = support_count > 0
+        support = support_count == masks.shape[0]
         mean, residuals = phase_decomposition(fields, support=support)
         R, k = reynolds_stress(residuals)
         finite = support & np.isfinite(k)
@@ -107,6 +116,8 @@ def run_decomposition(
             npz,
             coordinates=xyz,
             support=support,
+            support_union=support_union,
+            support_count=support_count,
             mean=mean,
             residuals=residuals,
             reynolds_stress=R,
@@ -118,6 +129,9 @@ def run_decomposition(
             "phase": phase,
             "support_fraction": float(support.mean()),
             "common_support_nodes": int(support.sum()),
+            "union_support_nodes": int(support_union.sum()),
+            "intersection_over_union_fraction": support_audit.intersection_over_union_fraction,
+            "masks_identical": support_audit.masks_identical,
             "mean_speed_median_native": float(np.nanmedian(np.linalg.norm(mean, axis=-1))),
             "k_mean_native": float(np.nanmean(k[finite])) if finite.any() else np.nan,
             "k_p95_native": float(np.nanpercentile(k[finite], 95)) if finite.any() else np.nan,
@@ -137,6 +151,7 @@ def run_decomposition(
         diagnostics["phases"][phase] = {
             "finite_velocity_rows_per_realization": [int(v) for v in masks.sum(axis=1)],
             "common_support_nodes": int(support.sum()),
+            "support_audit": support_audit.to_dict(),
             "convergence": conv,
         }
         del fields, residuals, R, k, mean

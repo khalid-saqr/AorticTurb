@@ -9,7 +9,7 @@ from ..grid import infer_structured_grid, adaptive_windows
 from ..kolmogorov.flux import coarse_grained_flux
 from ..uncertainty.bootstrap import bootstrap_mean_ci
 from ..reporting.run_manifest import create_run_directory, initialize_run, finalize_run, write_json, write_csv, append_log
-from .gate_a import evaluate_gate_a
+from .gate_a import evaluate_gate_a, LEGACY_SUPPORT_FRACTION_DEFINITION
 
 
 METHODS = """# Gate A — turbulence versus deterministic unsteadiness
@@ -22,6 +22,11 @@ establish resolved stochastic multiscale dynamics; constancy across scale is res
 the later Kolmogorov–Obukhov stage. Bootstrap resampling is exclusively across the 16
 independent realizations. A laminar/unsteady result requires an externally supplied
 measurement-noise RMS ceiling; otherwise failure to establish turbulence is `UNRESOLVED`.
+
+Support quantities are reported with distinct semantics. Whole-lattice common-support
+occupancy is not treated as synonymous with realization-mask agreement or local-window
+validity. This pass preserves the historical whole-lattice readiness threshold exactly;
+the additional support diagnostics are audit outputs only and cannot change classification.
 """
 
 
@@ -57,6 +62,50 @@ def _mean_flux(u: np.ndarray, spacing: tuple[float, float, float], sigma: float)
     return float(np.mean(core))
 
 
+def _support_semantics(data: dict[str, np.ndarray], windows: list) -> dict:
+    support = np.asarray(data["support"], dtype=bool)
+    total_nodes = int(support.size)
+    intersection_nodes = int(support.sum())
+    result = {
+        "common_intersection_nodes": intersection_nodes,
+        "total_cartesian_lattice_nodes": total_nodes,
+        "common_intersection_fraction_total": float(intersection_nodes / total_nodes),
+        "common_intersection_fraction_definition": LEGACY_SUPPORT_FRACTION_DEFINITION,
+        "mask_agreement_available": False,
+        "union_support_nodes": None,
+        "intersection_over_union_fraction": None,
+        "support_count_min": None,
+        "support_count_max": None,
+        "fully_finite_window_count": int(len(windows)),
+        "local_window_valid_fractions": [float(w.valid_fraction) for w in windows],
+        "local_window_min_valid_fraction": (
+            float(min(w.valid_fraction for w in windows)) if windows else None
+        ),
+    }
+
+    support_union = data.get("support_union")
+    if support_union is not None:
+        union = np.asarray(support_union, dtype=bool)
+        if union.shape != support.shape:
+            raise ValueError("support_union must have the same shape as support")
+        union_nodes = int(union.sum())
+        result["mask_agreement_available"] = True
+        result["union_support_nodes"] = union_nodes
+        result["intersection_over_union_fraction"] = (
+            float(intersection_nodes / union_nodes) if union_nodes > 0 else None
+        )
+
+    support_count = data.get("support_count")
+    if support_count is not None:
+        counts = np.asarray(support_count)
+        if counts.shape != support.shape:
+            raise ValueError("support_count must have the same shape as support")
+        result["support_count_min"] = int(counts.min())
+        result["support_count_max"] = int(counts.max())
+
+    return result
+
+
 def run_regime(dataset_root: str | Path, decomposition_dir: str | Path, output_root: str | Path, config: dict, *, run_id: str | None = None) -> dict:
     dataset_root = Path(dataset_root)
     decomposition_dir = Path(decomposition_dir)
@@ -88,7 +137,12 @@ def run_regime(dataset_root: str | Path, decomposition_dir: str | Path, output_r
         support_grid = grid.reshape_nodes(support)
         windows = adaptive_windows(support_grid, preferred=preferred, fallback_sizes=fallback, overlap=overlap, min_valid_fraction=1.0, require_full=True, max_windows=max_windows)
         readiness = evaluate_gate_a(mean, residuals, support_fraction_value=float(support.mean()), min_realizations=int(rcfg.get("min_realizations", 12)), min_support_fraction=float(rcfg.get("min_common_support_fraction", 0.50)))
-        phase_diag = {"readiness": readiness.to_dict(), "grid": grid.describe(), "windows": [w.to_dict() for w in windows]}
+        phase_diag = {
+            "readiness": readiness.to_dict(),
+            "support_semantics": _support_semantics(data, windows),
+            "grid": grid.describe(),
+            "windows": [w.to_dict() for w in windows],
+        }
         if not windows:
             decision = "UNRESOLVED"
             turbulence: bool | None = None
