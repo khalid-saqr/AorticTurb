@@ -34,14 +34,19 @@ primary Gate-A rule and is not overwritten.
 The sensitivity comparators are:
 
 1. `legacy_global_fraction`: common intersection nodes divided by all nodes in the deposited
-   Cartesian lattice, with the historical configured threshold.
+   Cartesian lattice, using the exact threshold and minimum-realization rule recorded by the
+   source Gate-A run.
 2. `strict_mask_consistency`: exact equality of finite-velocity support across realizations,
    expressed as intersection/union = 1. No empirical near-unity threshold is introduced.
-3. `fully_finite_local_windows`: at least the configured number of local rectangular
-   analysis windows with the configured valid-support fraction. By default this requires
-   at least one window with valid fraction 1.0, matching the local spatial diagnostics.
+3. `fully_finite_local_windows`: at least one local rectangular analysis window with valid
+   support fraction 1.0, matching the support requirement already used by the spatial
+   multiscale diagnostics.
 4. `strict_mask_and_local_windows`: conjunction of exact mask consistency and local-window
    admissibility.
+
+The comparator set and the new local criterion are locked for this canonical sensitivity
+pass. Changing them requires an explicit code/project change rather than a config edit after
+observing the result.
 
 For each policy, the already-computed Gate-A multiscale evidence (spatial coherence,
 correlation decay, forward transfer, and measurement-noise criterion where available) is
@@ -93,6 +98,36 @@ def _laminar_evidence(phase_diag: dict[str, Any], noise_ceiling: float | None) -
     return bool(np.isfinite(upper) and upper <= noise_ceiling and not transfer)
 
 
+def _locked_sensitivity_config(config: dict) -> tuple[tuple[str, ...], int, float]:
+    scfg = config.get("regime", {}).get("support_sensitivity", {})
+    policies = tuple(
+        str(value)
+        for value in scfg.get(
+            "policies",
+            list(DEFAULT_SUPPORT_SENSITIVITY_POLICIES),
+        )
+    )
+    min_windows = int(scfg.get("min_fully_finite_windows", 1))
+    required_window_fraction = float(
+        scfg.get("required_local_window_valid_fraction", 1.0)
+    )
+    if policies != DEFAULT_SUPPORT_SENSITIVITY_POLICIES:
+        raise ValueError(
+            "Canonical Pass-2 support sensitivity policies are locked to the pre-specified "
+            f"set {DEFAULT_SUPPORT_SENSITIVITY_POLICIES}; received {policies}."
+        )
+    if min_windows != 1:
+        raise ValueError(
+            "Canonical Pass-2 local-window criterion is locked to at least one fully "
+            "finite analysis window."
+        )
+    if required_window_fraction != 1.0:
+        raise ValueError(
+            "Canonical Pass-2 local-window valid fraction is locked to 1.0."
+        )
+    return policies, min_windows, required_window_fraction
+
+
 def run_support_sensitivity(
     dataset_root: str | Path,
     decomposition_dir: str | Path,
@@ -117,8 +152,14 @@ def run_support_sensitivity(
 
     diagnostics_path = regime_dir / "diagnostics.json"
     regime_summary_path = regime_dir / "regime_summary.json"
+    source_config_path = regime_dir / "config.json"
     decomposition_summary_path = decomposition_dir / "decomposition_summary.json"
-    for path in (diagnostics_path, regime_summary_path, decomposition_summary_path):
+    for path in (
+        diagnostics_path,
+        regime_summary_path,
+        source_config_path,
+        decomposition_summary_path,
+    ):
         if not path.exists():
             raise FileNotFoundError(path)
 
@@ -130,6 +171,7 @@ def run_support_sensitivity(
         methods=METHODS,
         extra_inputs=[
             decomposition_summary_path,
+            source_config_path,
             diagnostics_path,
             regime_summary_path,
         ],
@@ -139,23 +181,13 @@ def run_support_sensitivity(
 
     regime_diagnostics = _load_json(diagnostics_path)
     regime_summary = _load_json(regime_summary_path)
-    rcfg = config.get("regime", {})
-    scfg = rcfg.get("support_sensitivity", {})
-    min_realizations = int(rcfg.get("min_realizations", 12))
-    min_global = float(rcfg.get("min_common_support_fraction", 0.50))
-    min_windows = int(scfg.get("min_fully_finite_windows", 1))
-    required_window_fraction = float(
-        scfg.get("required_local_window_valid_fraction", 1.0)
-    )
-    policies = tuple(
-        str(value)
-        for value in scfg.get(
-            "policies",
-            list(DEFAULT_SUPPORT_SENSITIVITY_POLICIES),
-        )
-    )
-    noise_raw = rcfg.get("measurement_noise_rms_max")
+    source_config = _load_json(source_config_path)
+    source_rcfg = source_config.get("regime", {})
+    min_realizations = int(source_rcfg.get("min_realizations", 12))
+    min_global = float(source_rcfg.get("min_common_support_fraction", 0.50))
+    noise_raw = source_rcfg.get("measurement_noise_rms_max")
     noise_ceiling = None if noise_raw is None else float(noise_raw)
+    policies, min_windows, required_window_fraction = _locked_sensitivity_config(config)
 
     rows: list[dict[str, Any]] = []
     phase_payload: dict[str, Any] = {}
@@ -168,13 +200,14 @@ def run_support_sensitivity(
         if not isinstance(phase_diag, dict):
             raise ValueError(f"Missing Gate-A diagnostics for {phase}")
 
+        mask_iou = _intersection_over_union(data)
         window_count, min_window_fraction = _window_support(phase_diag)
         sensitivity = evaluate_support_policy_sensitivity(
             realizations=int(residuals.shape[0]),
             min_realizations=min_realizations,
             common_intersection_fraction_total=float(support.mean()),
             min_common_support_fraction=min_global,
-            intersection_over_union_fraction=_intersection_over_union(data),
+            intersection_over_union_fraction=mask_iou,
             fully_finite_window_count=window_count,
             local_window_min_valid_fraction=min_window_fraction,
             min_fully_finite_windows=min_windows,
@@ -224,7 +257,7 @@ def run_support_sensitivity(
                         else None
                     ),
                     "common_intersection_fraction_total": float(support.mean()),
-                    "intersection_over_union_fraction": _intersection_over_union(data),
+                    "intersection_over_union_fraction": mask_iou,
                     "fully_finite_window_count": window_count,
                     "local_window_min_valid_fraction": min_window_fraction,
                     "coherent_spatial_residual": coherent,
@@ -240,6 +273,11 @@ def run_support_sensitivity(
                 "decision": primary_decision,
                 "turbulence_established": primary_turbulence,
                 "unchanged_by_sensitivity_run": True,
+            },
+            "source_gate_a_parameters": {
+                "min_realizations": min_realizations,
+                "min_common_support_fraction": min_global,
+                "measurement_noise_rms_max": noise_ceiling,
             },
             "support_sensitivity": sensitivity.to_dict(),
             "projected_gate_a_by_policy": projected,
@@ -265,6 +303,7 @@ def run_support_sensitivity(
             "source_regime_run": str(regime_dir),
             "primary_policy_unchanged": LEGACY_GLOBAL_FRACTION,
             "policies_are_sensitivity_comparators_only": True,
+            "canonical_comparator_set_locked": True,
             "phases": phase_payload,
         },
     )
