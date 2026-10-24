@@ -104,6 +104,7 @@ def initialize_run(
 def finalize_run(run_dir: Path, *, status: str = "COMPLETE", warnings: list[str] | None = None) -> Path:
     manifest_path = run_dir / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    append_log(run_dir, f"finalized status={status}")
     outputs = []
     for path in sorted(p for p in run_dir.rglob("*") if p.is_file()):
         if path == manifest_path:
@@ -118,5 +119,4 @@ def finalize_run(run_dir: Path, *, status: str = "COMPLETE", warnings: list[str]
     manifest["outputs"] = outputs
     if warnings:
         manifest.setdefault("warnings", []).extend(warnings)
-    append_log(run_dir, f"finalized status={status}")
     return write_json(manifest_path, manifest)

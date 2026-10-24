@@ -1,10 +1,15 @@
+import hashlib
 import json
 from pathlib import Path
 
 from aorticturb.reporting.run_manifest import create_run_directory, initialize_run, finalize_run
 
 
-def test_finalized_run_manifest_hashes_outputs(tmp_path: Path):
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_finalized_run_manifest_hashes_final_outputs(tmp_path: Path):
     dataset = tmp_path / "dataset"
     dataset.mkdir()
     (dataset / "SHA256SUMS.txt").write_text("# test ledger\n", encoding="utf-8")
@@ -14,7 +19,8 @@ def test_finalized_run_manifest_hashes_outputs(tmp_path: Path):
     finalize_run(run_dir)
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "COMPLETE"
-    paths = {item["path"] for item in manifest["outputs"]}
-    assert "metrics.csv" in paths
-    assert "config.json" in paths
-    assert "input_hashes.txt" in paths
+    records = {item["path"]: item for item in manifest["outputs"]}
+    for relpath, record in records.items():
+        assert record["sha256"] == _sha(run_dir / relpath)
+    assert "metrics.csv" in records
+    assert "logs/run.log" in records

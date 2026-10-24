@@ -16,11 +16,7 @@ def phase_dir(dataset_root: str | Path, phase: str) -> Path:
 
 def expected_velocity_paths(dataset_root: str | Path) -> list[Path]:
     root = Path(dataset_root)
-    return [
-        root / "01_raw_data" / "M_medium_root" / "AAo" / phase / name
-        for phase in PHASES
-        for name in REALIZATIONS
-    ]
+    return [root / "01_raw_data" / "M_medium_root" / "AAo" / phase / name for phase in PHASES for name in REALIZATIONS]
 
 
 def geometry_paths(dataset_root: str | Path) -> dict[str, Path]:
@@ -44,3 +40,7 @@ def provenance_manifest_paths(dataset_root: str | Path) -> dict[str, Path]:
         "acquisition": root / "acquisition_manifest_v1.json",
         "geometry": root / "geometry_manifest.json",
     }
+
+
+def final_acquired_checksum_path(dataset_root: str | Path) -> Path:
+    return Path(dataset_root) / "00_provenance" / "checksums" / "final_acquired_SHA256SUMS.txt"

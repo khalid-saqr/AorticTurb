@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "dataset_name": "Hasler-Obrist TomoPIV analysis subset",
   "curated_zenodo": {
     "record_id": null,
@@ -22,6 +22,7 @@
     "metadata_file": "METADATA.json",
     "agents_file": "AGENTS.md",
     "package_checksum_file": "SHA256SUMS.txt",
+    "historical_final_acquired_checksum_file": "00_provenance/checksums/final_acquired_SHA256SUMS.txt",
     "required_provenance_manifests": [
       "00_provenance/transfer_manifests/pass5_integrity_audit.json",
       "00_provenance/transfer_manifests/acquisition_manifest_v1.json",
