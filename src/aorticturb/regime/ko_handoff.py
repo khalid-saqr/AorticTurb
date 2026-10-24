@@ -28,13 +28,20 @@ def _load_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def resolve_ko_handoff(regime_dir: str | Path) -> dict[str, GateAHandoff]:
+def resolve_ko_handoff(
+    decomposition_dir: str | Path,
+    regime_dir: str | Path,
+    support_sensitivity_dir: str | Path | None = None,
+) -> dict[str, GateAHandoff]:
     """Authorize KO only from the formal primary Gate-A result.
 
-    Support-sensitivity outputs remain diagnostics and cannot independently open the KO
-    branch. A phase enters KO only when the supplied primary Gate-A run records
+    ``decomposition_dir`` and ``support_sensitivity_dir`` are accepted for backward API
+    compatibility with PR #8, but support-sensitivity outputs have no authorization effect.
+    A phase enters KO only when the supplied primary Gate-A run records
     ``turbulence_established=True``.
     """
+    _ = Path(decomposition_dir)
+    _ = support_sensitivity_dir
     regime_dir = Path(regime_dir).resolve()
     regime_path = regime_dir / "regime_summary.json"
     if not regime_path.is_file():
