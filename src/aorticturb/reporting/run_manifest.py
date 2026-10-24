@@ -53,7 +53,30 @@ def _package_versions() -> dict[str, str | None]:
     return versions
 
 
+def _installed_vcs_commit() -> str | None:
+    """Return the exact VCS commit recorded by a PEP-610 VCS installation, if available."""
+    try:
+        distribution = importlib_metadata.distribution("aorticturb")
+        raw = distribution.read_text("direct_url.json")
+    except (importlib_metadata.PackageNotFoundError, OSError, ValueError):
+        return None
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    vcs_info = payload.get("vcs_info")
+    if not isinstance(vcs_info, dict):
+        return None
+    commit = vcs_info.get("commit_id")
+    return commit if isinstance(commit, str) and len(commit) >= 7 else None
+
+
 def _git_commit() -> str | None:
+    installed_commit = _installed_vcs_commit()
+    if installed_commit is not None:
+        return installed_commit
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
