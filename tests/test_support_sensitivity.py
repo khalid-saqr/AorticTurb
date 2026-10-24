@@ -3,6 +3,7 @@ import pytest
 from aorticturb.regime.support_sensitivity import (
     FULLY_FINITE_LOCAL_WINDOWS,
     LEGACY_GLOBAL_FRACTION,
+    PRIMARY_SUPPORT_POLICY,
     STRICT_MASK_AND_LOCAL_WINDOWS,
     STRICT_MASK_CONSISTENCY,
     evaluate_support_policy_sensitivity,
@@ -27,10 +28,11 @@ def _evaluate(**overrides):
     return evaluate_support_policy_sensitivity(**kwargs)
 
 
-def test_sparse_identical_support_is_policy_sensitive_without_selecting_winner():
+def test_sparse_identical_support_preserves_historical_policy_sensitivity():
     result = _evaluate()
 
-    assert result.primary_policy == LEGACY_GLOBAL_FRACTION
+    assert result.primary_policy == PRIMARY_SUPPORT_POLICY
+    assert result.primary_policy == STRICT_MASK_AND_LOCAL_WINDOWS
     assert result.policies[LEGACY_GLOBAL_FRACTION].ready is False
     assert result.policies[STRICT_MASK_CONSISTENCY].ready is True
     assert result.policies[FULLY_FINITE_LOCAL_WINDOWS].ready is True
@@ -67,7 +69,7 @@ def test_no_fully_finite_window_fails_local_policy():
     assert result.policies[STRICT_MASK_AND_LOCAL_WINDOWS].ready is False
 
 
-def test_counterfactual_projection_reuses_same_multiscale_evidence():
+def test_historical_legacy_projection_remains_a_sensitivity_comparator():
     result = _evaluate()
     legacy = project_gate_a_decision(
         result.policies[LEGACY_GLOBAL_FRACTION],
@@ -76,8 +78,8 @@ def test_counterfactual_projection_reuses_same_multiscale_evidence():
         forward_transfer_supported=True,
         laminar_evidence=False,
     )
-    local = project_gate_a_decision(
-        result.policies[FULLY_FINITE_LOCAL_WINDOWS],
+    primary = project_gate_a_decision(
+        result.policies[STRICT_MASK_AND_LOCAL_WINDOWS],
         coherent_spatial_residual=True,
         correlation_decay_supported=True,
         forward_transfer_supported=True,
@@ -86,25 +88,25 @@ def test_counterfactual_projection_reuses_same_multiscale_evidence():
 
     assert legacy["decision"] == "UNRESOLVED"
     assert legacy["turbulence_established"] is None
-    assert local["decision"] == "STOCHASTIC_MULTISCALE_SUPPORTED"
-    assert local["turbulence_established"] is True
+    assert primary["decision"] == "STOCHASTIC_MULTISCALE_SUPPORTED"
+    assert primary["turbulence_established"] is True
 
 
 def test_ready_support_does_not_manufacture_turbulence_without_transfer():
     result = _evaluate()
-    local = project_gate_a_decision(
-        result.policies[FULLY_FINITE_LOCAL_WINDOWS],
+    primary = project_gate_a_decision(
+        result.policies[STRICT_MASK_AND_LOCAL_WINDOWS],
         coherent_spatial_residual=True,
         correlation_decay_supported=True,
         forward_transfer_supported=False,
         laminar_evidence=False,
     )
 
-    assert local["decision"] == "UNRESOLVED"
-    assert local["turbulence_established"] is None
+    assert primary["decision"] == "UNRESOLVED"
+    assert primary["turbulence_established"] is None
 
 
-def test_canonical_pass2_comparator_configuration_is_locked():
+def test_canonical_support_comparator_configuration_is_locked():
     canonical = {
         "regime": {
             "support_sensitivity": {
