@@ -24,12 +24,24 @@ def _notebook_source() -> str:
 def test_pass3_notebook_is_thin_and_pinned():
     source = _notebook_source()
     assert f'AORTICTURB_COMMIT = "{PINNED_PASS3_COMMIT}"' in source
+    assert 'AORTICTURB_REPO = "https://github.com/khalid-saqr/AorticTurb.git"' in source
     assert "pass3_runner.py" in source
     assert "runner.run_pass3" in source
     assert "run_all(" not in source
     assert "run_kolmogorov" not in source
     assert "run_taylor" not in source
     assert "run_anisotropy" not in source
+
+
+def test_pass3_notebook_checkout_is_retry_safe_and_diagnostic():
+    source = _notebook_source()
+    assert "INVALID_REPOSITORY_URL" in source
+    assert "capture_output=True" in source
+    assert "for attempt in range(1, 4)" in source
+    assert "GIT_CLONE_FAILED" in source
+    assert "GIT_CHECKOUT_FAILED" in source
+    assert '"--filter=blob:none"' in source
+    assert "clone.stderr.strip()" in source
 
 
 def test_pass3_notebook_forces_import_from_pinned_checkout():
