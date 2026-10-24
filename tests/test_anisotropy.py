@@ -28,6 +28,31 @@ def test_one_component_limit_convention():
     np.testing.assert_allclose(b, expected)
 
 
+def test_eigenvalues_preserve_nonfinite_nodes_as_nan():
+    b = np.array(
+        [
+            np.diag([2 / 3, -1 / 3, -1 / 3]),
+            np.full((3, 3), np.nan),
+            np.zeros((3, 3)),
+        ],
+        dtype=float,
+    )
+
+    lam = eigenvalues(b)
+
+    np.testing.assert_allclose(lam[0], [2 / 3, -1 / 3, -1 / 3])
+    assert np.isnan(lam[1]).all()
+    np.testing.assert_allclose(lam[2], [0.0, 0.0, 0.0])
+
+    bary = barycentric_coordinates(b)
+    np.testing.assert_allclose(bary[0], [1.0, 0.0, 0.0])
+    assert np.isnan(bary[1]).all()
+    np.testing.assert_allclose(bary[2], [0.0, 0.0, 1.0])
+
+    real = realizability_mask(b)
+    np.testing.assert_array_equal(real, [True, False, True])
+
+
 def test_plot_ready_anisotropy_persists_nodewise_quantities(tmp_path):
     run_dir = tmp_path / "run"
     (run_dir / "processed").mkdir(parents=True)
