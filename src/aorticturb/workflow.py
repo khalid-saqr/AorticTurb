@@ -8,6 +8,7 @@ from .regime.driver import run_regime
 from .kolmogorov.driver import run_kolmogorov
 from .taylor.driver import run_taylor
 from .anisotropy.driver import run_anisotropy
+from .backscatter.driver import run_backscatter
 from .diagnostics.driver import run_diagnostics
 from .classification.driver import run_classification
 
@@ -22,6 +23,7 @@ def run_all(dataset_root: str | Path, workspace_root: str | Path, *, config_path
     ko = run_kolmogorov(dataset_root, decomposition["run_dir"], regime["run_dir"], workspace_root, config, run_id=f"{study_id}_ko")
     taylor = run_taylor(dataset_root, decomposition["run_dir"], regime["run_dir"], workspace_root, config, run_id=f"{study_id}_taylor")
     anisotropy = run_anisotropy(dataset_root, decomposition["run_dir"], regime["run_dir"], workspace_root, config, run_id=f"{study_id}_anisotropy")
+    backscatter = run_backscatter(dataset_root, decomposition["run_dir"], regime["run_dir"], ko["run_dir"], workspace_root, config, run_id=f"{study_id}_backscatter")
     diagnostics = run_diagnostics(dataset_root, decomposition["run_dir"], regime["run_dir"], workspace_root, config, run_id=f"{study_id}_diagnostics")
     classification = run_classification(dataset_root, regime["run_dir"], ko["run_dir"], workspace_root, config, taylor_dir=taylor["run_dir"], anisotropy_dir=anisotropy["run_dir"], diagnostics_dir=diagnostics["run_dir"], run_id=f"{study_id}_classification")
     summary = {
@@ -34,6 +36,7 @@ def run_all(dataset_root: str | Path, workspace_root: str | Path, *, config_path
             "kolmogorov_obukhov": ko["run_dir"],
             "taylor": taylor["run_dir"],
             "anisotropy": anisotropy["run_dir"],
+            "signed_interscale_transfer": backscatter["run_dir"],
             "diagnostics": diagnostics["run_dir"],
             "classification": classification["run_dir"],
         },

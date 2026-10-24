@@ -18,6 +18,7 @@ from .regime.sensitivity_driver import run_support_sensitivity
 from .kolmogorov.driver import run_kolmogorov
 from .taylor.driver import run_taylor
 from .anisotropy.driver import run_anisotropy
+from .backscatter.driver import run_backscatter
 from .diagnostics.driver import run_diagnostics
 from .classification.driver import run_classification
 from .workflow import run_all
@@ -129,6 +130,29 @@ def taylor(root: Path = typer.Option(..., "--root", exists=True, file_okay=False
 @app.command()
 def anisotropy(root: Path = typer.Option(..., "--root", exists=True, file_okay=False), decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False), regime_run: Path = typer.Option(..., "--regime", exists=True, file_okay=False), output: Path = typer.Option(Path("outputs"), "--output", "-o"), config: Path | None = typer.Option(None, "--config")) -> None:
     console.print_json(json.dumps(run_anisotropy(root, decomposition, regime_run, output, _cfg(config))))
+
+
+@app.command()
+def backscatter(
+    root: Path = typer.Option(..., "--root", exists=True, file_okay=False),
+    decomposition: Path = typer.Option(..., "--decomposition", exists=True, file_okay=False),
+    regime_run: Path = typer.Option(..., "--regime", exists=True, file_okay=False),
+    kolmogorov_run: Path = typer.Option(..., "--kolmogorov", exists=True, file_okay=False),
+    output: Path = typer.Option(Path("outputs"), "--output", "-o"),
+    config: Path | None = typer.Option(None, "--config"),
+) -> None:
+    console.print_json(
+        json.dumps(
+            run_backscatter(
+                root,
+                decomposition,
+                regime_run,
+                kolmogorov_run,
+                output,
+                _cfg(config),
+            )
+        )
+    )
 
 
 @app.command()

@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks" / "AorticTurb_Colab.ipynb"
-PINNED_SCIENTIFIC_COMMIT = "4be7c4ca4c2fc62e54008c65ad275dfd9b5945e5"
+PINNED_SCIENTIFIC_COMMIT = "43544057e627f0a00051557171fafdc2e41b7402"
 
 
 def _payload() -> dict:
